@@ -34,9 +34,11 @@ import java.util.concurrent.ThreadFactory;
  */
 public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor implements EventLoop {
 
+    //任务队列大小，默认是无界队列
     protected static final int DEFAULT_MAX_PENDING_TASKS = Math.max(16,
             SystemPropertyUtil.getInt("io.netty.eventLoop.maxPendingTasks", Integer.MAX_VALUE));
 
+    //尾部任务队列
     private final Queue<Runnable> tailTasks;
 
     protected SingleThreadEventLoop(EventLoopGroup parent, ThreadFactory threadFactory, boolean addTaskWakesUp) {
@@ -64,7 +66,9 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     protected SingleThreadEventLoop(EventLoopGroup parent, Executor executor,
                                     boolean addTaskWakesUp, Queue<Runnable> taskQueue, Queue<Runnable> tailTaskQueue,
                                     RejectedExecutionHandler rejectedExecutionHandler) {
+        // 里面一些初始化也很 重要
         super(parent, executor, addTaskWakesUp, taskQueue, rejectedExecutionHandler);
+        //尾部队列 执行一些统计任务 不常用
         tailTasks = ObjectUtil.checkNotNull(tailTaskQueue, "tailTaskQueue");
     }
 
@@ -78,6 +82,12 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
         return (EventLoop) super.next();
     }
 
+    /**
+     * 注册channel到绑定的Reactor上
+     * <p>
+     *     <b>一个channel只能绑定到一个Reactor上，一个Reactor负责监听多个channel</b>
+     * </p>
+     */
     @Override
     public ChannelFuture register(Channel channel) {
         return register(new DefaultChannelPromise(channel, this));
@@ -86,6 +96,11 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
     @Override
     public ChannelFuture register(final ChannelPromise promise) {
         ObjectUtil.checkNotNull(promise, "promise");
+
+        /**
+         * unsafe负责channel底层的各种操作
+         * {@link AbstractChannel.AbstractUnsafe#register(EventLoop, ChannelPromise)}
+         */
         promise.channel().unsafe().register(this, promise);
         return promise;
     }

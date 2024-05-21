@@ -1038,6 +1038,7 @@ public final class PlatformDependent {
      * @return A MPSC queue which may be unbounded.
      */
     public static <T> Queue<T> newMpscQueue() {
+        //创建无界任务队列
         return Mpsc.newMpscQueue();
     }
 
@@ -1046,6 +1047,7 @@ public final class PlatformDependent {
      * consumer (one thread!).
      */
     public static <T> Queue<T> newMpscQueue(final int maxCapacity) {
+        //创建有界任务队列
         return Mpsc.newMpscQueue(maxCapacity);
     }
 

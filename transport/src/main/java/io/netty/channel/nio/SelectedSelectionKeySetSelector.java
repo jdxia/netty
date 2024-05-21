@@ -22,7 +22,9 @@ import java.nio.channels.spi.SelectorProvider;
 import java.util.Set;
 
 final class SelectedSelectionKeySetSelector extends Selector {
+    //Netty优化后的 SelectedKey就绪集合
     private final SelectedSelectionKeySet selectionKeys;
+    //优化后的JDK NIO 原生Selector
     private final Selector delegate;
 
     SelectedSelectionKeySetSelector(Selector delegate, SelectedSelectionKeySet selectionKeys) {
@@ -52,18 +54,24 @@ final class SelectedSelectionKeySetSelector extends Selector {
 
     @Override
     public int selectNow() throws IOException {
+        /**
+         * 重置SelectedKeys集合
+         * 这里只是清掉 SelectedKeySet 中的 SelectionKey，delegate 使用来重新调用 select，这样可以重新装填 SelectedKeySet，因为 jdk 并不会主动帮助我们清理，所以需要我们手动清理掉
+         */
         selectionKeys.reset();
         return delegate.selectNow();
     }
 
     @Override
     public int select(long timeout) throws IOException {
+        //重置SelectedKeys集合
         selectionKeys.reset();
         return delegate.select(timeout);
     }
 
     @Override
     public int select() throws IOException {
+        //重置SelectedKeys集合
         selectionKeys.reset();
         return delegate.select();
     }

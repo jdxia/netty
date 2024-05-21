@@ -16,10 +16,13 @@
 package io.netty.channel;
 
 import io.netty.buffer.ByteBufAllocator;
+import io.netty.channel.nio.AbstractNioChannel;
 import io.netty.channel.socket.ChannelOutputShutdownEvent;
 import io.netty.channel.socket.ChannelOutputShutdownException;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.DefaultAttributeMap;
 import io.netty.util.ReferenceCountUtil;
+import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.UnstableApi;
@@ -44,9 +47,21 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractChannel.class);
 
+    /**
+     * channel是有创建层次的，比如ServerSocketChannel 是 SocketChannel的 parent
+     * 这里的parent属性用来保存上一级的Channel，比如这里的NioServerSocketChannel是顶级Channel，所以它的parent = null。
+     * 客户端NioSocketChannel是由NioServerSocketChannel创建的，所以它的parent = NioServerSocketChannel。
+     */
     private final Channel parent;
+    //为Channel分配全局唯一的ChannelId。ChannelId由机器Id(machineId)，进程Id（processId），序列号（sequence），时间戳（timestamp），随机数（random）构成
     private final ChannelId id;
+    //unsafe用于封装对底层socket的相关操作
+    // Unsafe为Channel接口的一个内部接口，用于定义实现对Channel底层的各种操作，Unsafe接口定义的操作行为只能由Netty框架的Reactor线程调用，用户线程禁止调用。
     private final Unsafe unsafe;
+    /**
+     * 为channel分配独立的pipeline用于IO事件编排
+     * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler。
+     */
     private final DefaultChannelPipeline pipeline;
     private final VoidChannelPromise unsafeVoidPromise = new VoidChannelPromise(this, false);
     private final CloseFuture closeFuture = new CloseFuture(this);
@@ -69,9 +84,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      *        the parent of this channel. {@code null} if there's no parent.
      */
     protected AbstractChannel(Channel parent) {
+        // channel 也是有层级的, 客户端的是来自那个服务端的channel, 服务端父级是null
         this.parent = parent;
+        //channel全局唯一ID machineId+processId+sequence+timestamp+random
         id = newId();
+        //unsafe用于定义实现对Channel的底层操作
         unsafe = newUnsafe();
+
+        /**
+         * 为channel分配独立的pipeline用于IO事件编排
+         * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler。
+         * 往下
+         */
         pipeline = newChannelPipeline();
     }
 
@@ -117,6 +141,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
      * Returns a new {@link DefaultChannelPipeline} instance.
      */
     protected DefaultChannelPipeline newChannelPipeline() {
+        // 往下, 看图
         return new DefaultChannelPipeline(this);
     }
 
@@ -219,8 +244,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return registered;
     }
 
+    // 绑定端口地址
     @Override
     public ChannelFuture bind(SocketAddress localAddress) {
+        // 在pipeline中传播bind事件，触发回调pipeline中所有ChannelHandler的bind方法
         return pipeline.bind(localAddress);
     }
 
@@ -461,6 +488,9 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             return remoteAddress0();
         }
 
+        /**
+         * 注册Channel到绑定的Reactor上
+         */
         @Override
         public final void register(EventLoop eventLoop, final ChannelPromise promise) {
             ObjectUtil.checkNotNull(eventLoop, "eventLoop");
@@ -468,21 +498,38 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 promise.setFailure(new IllegalStateException("registered to an event loop already"));
                 return;
             }
+
+            // EventLoop的类型要与Channel的类型一样  Nio Oio Aio
             if (!isCompatible(eventLoop)) {
                 promise.setFailure(
                         new IllegalStateException("incompatible event loop type: " + eventLoop.getClass().getName()));
                 return;
             }
 
+            //在channel上设置绑定的Reactor
             AbstractChannel.this.eventLoop = eventLoop;
 
+            /**
+             * 执行channel注册的操作必须是Reactor线程来完成
+             *
+             * 1: 如果当前执行线程是Reactor线程，则直接执行register0进行注册
+             * 2：如果当前执行线程是外部线程，则需要将register0注册操作 封装程异步Task 由Reactor线程执行
+             */
             if (eventLoop.inEventLoop()) {
+                // 驱动整个Channel注册绑定流程的关键方法
                 register0(promise);
             } else {
                 try {
+                    /**
+                     * 启动的时候走这里
+                     *
+                     * Reactor线程的启动是在向Reactor提交第一个异步任务的时候启动的
+                     * {@link SingleThreadEventExecutor#execute(Runnable)}
+                     */
                     eventLoop.execute(new Runnable() {
                         @Override
                         public void run() {
+                            // 驱动整个Channel注册绑定流程的关键方法
                             register0(promise);
                         }
                     });
@@ -501,24 +548,47 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
                 // call was outside of the eventLoop
+
+                //查看注册操作是否已经取消，或者对应channel已经关闭
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
                 boolean firstRegistration = neverRegistered;
+
+                /**
+                 * 执行真正的注册操作
+                 * {@link AbstractNioChannel#doRegister()}
+                 */
                 doRegister();
+
+                //修改注册状态
                 neverRegistered = false;
                 registered = true;
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+
+                //回调pipeline中添加的ChannelInitializer的handlerAdded方法，在这里初始化channelPipeline
                 pipeline.invokeHandlerAddedIfNeeded();
 
+                //设置regFuture为success，触发operationComplete回调,将bind操作放入Reactor的任务队列中，等待Reactor线程执行。
                 safeSetSuccess(promise);
+
+                /**
+                 * 触发channelRegister事件
+                 * 触发回调pipeline中添加的ChannelInitializer的handlerAdded方法
+                 */
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing
                 // multiple channel actives if the channel is deregistered and re-registered.
+
+                /**
+                 * 对于服务端ServerSocketChannel来说 只有绑定端口地址成功后 channel的状态才是active的。
+                 * 此时绑定操作作为异步任务在Reactor的任务队列中，绑定操作还没开始，所以这里的isActive()是false
+                 */
                 if (isActive()) {
                     if (firstRegistration) {
+                        //触发channelActive事件
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read
@@ -557,8 +627,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "address (" + localAddress + ") anyway as requested.");
             }
 
+            //这时channel还未激活  wasActive = false
             boolean wasActive = isActive();
             try {
+
+                /**
+                 * 调用具体channel实现类
+                 * {@link NioServerSocketChannel#doBind(SocketAddress)}
+                 */
                 doBind(localAddress);
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
@@ -566,15 +642,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            //绑定成功后 channel激活 触发channelActive事件传播
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        //pipeline中触发channelActive事件
                         pipeline.fireChannelActive();
                     }
                 });
             }
 
+            //回调注册在promise上的ChannelFutureListener
             safeSetSuccess(promise);
         }
 
@@ -985,6 +1064,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         /**
          * Marks the specified {@code promise} as success.  If the {@code promise} is done already, log a message.
+         *
+         * 首先设置regFuture结果为success，并且回调注册在regFuture上的ChannelFutureListener
          */
         protected final void safeSetSuccess(ChannelPromise promise) {
             if (!(promise instanceof VoidChannelPromise) && !promise.trySuccess()) {

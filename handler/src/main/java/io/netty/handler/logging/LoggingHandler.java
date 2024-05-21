@@ -33,6 +33,8 @@ import java.net.SocketAddress;
 import static io.netty.buffer.ByteBufUtil.appendPrettyHexDump;
 import static io.netty.util.internal.StringUtil.NEWLINE;
 
+//可以对入站\出站事件进行日志记录，从而方便我们进行问题排查。
+// 知道连接当前的状态
 /**
  * A {@link ChannelHandler} that logs all events using a logging framework.
  * By default, all events are logged at <tt>DEBUG</tt> level and full hex dumps are recorded for ByteBufs.
@@ -41,11 +43,14 @@ import static io.netty.util.internal.StringUtil.NEWLINE;
 @SuppressWarnings({ "StringConcatenationInsideStringBufferAppend", "StringBufferReplaceableByString" })
 public class LoggingHandler extends ChannelDuplexHandler {
 
+    // 默认日志级别为DEBUG
     private static final LogLevel DEFAULT_LEVEL = LogLevel.DEBUG;
 
+    // 这里做了一个日志适配器，兼容各种日志模板
     protected final InternalLogger logger;
     protected final InternalLogLevel internalLevel;
 
+    // 指定日志级别
     private final LogLevel level;
     private final ByteBufFormat byteBufFormat;
 
@@ -54,6 +59,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
      * name of the instance with hex dump enabled.
      */
     public LoggingHandler() {
+        // 默认debug级别展示
         this(DEFAULT_LEVEL);
     }
     /**
@@ -76,6 +82,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
         this(level, ByteBufFormat.HEX_DUMP);
     }
 
+    // 最终在这里设置各种参数
     /**
      * Creates a new instance whose logger name is the fully qualified class
      * name of the instance.
@@ -110,6 +117,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
         this(clazz, level, ByteBufFormat.HEX_DUMP);
     }
 
+    // 与上面不带class的LoggingHandler区别就是logger对象的创建
     /**
      * Creates a new instance with the specified logger name.
      *
@@ -121,6 +129,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
         ObjectUtil.checkNotNull(clazz, "clazz");
         this.level = ObjectUtil.checkNotNull(level, "level");
         this.byteBufFormat = ObjectUtil.checkNotNull(byteBufFormat, "byteBufFormat");
+        // 可以指定name
         logger = InternalLoggerFactory.getInstance(clazz);
         internalLevel = level.toInternalLevel();
     }
@@ -176,6 +185,7 @@ public class LoggingHandler extends ChannelDuplexHandler {
 
     @Override
     public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        // 如果适配当前level
         if (logger.isEnabled(internalLevel)) {
             logger.log(internalLevel, format(ctx, "REGISTERED"));
         }

@@ -56,6 +56,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(SingleThreadEventExecutor.class);
 
+    //定义Reactor线程状态
     private static final int ST_NOT_STARTED = 1;
     private static final int ST_STARTED = 2;
     private static final int ST_SHUTTING_DOWN = 3;
@@ -69,6 +70,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     };
 
+    //Reactor线程状态字段state 原子更新器
     private static final AtomicIntegerFieldUpdater<SingleThreadEventExecutor> STATE_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(SingleThreadEventExecutor.class, "state");
     private static final AtomicReferenceFieldUpdater<SingleThreadEventExecutor, ThreadProperties> PROPERTIES_UPDATER =
@@ -80,6 +82,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private volatile Thread thread;
     @SuppressWarnings("unused")
     private volatile ThreadProperties threadProperties;
+
+    //ThreadPerTaskExecutor 用于启动Reactor线程
     private final Executor executor;
     private volatile boolean interrupted;
 
@@ -92,6 +96,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private long lastExecutionTime;
 
     @SuppressWarnings({ "FieldMayBeFinal", "unused" })
+    //Reactor线程状态  初始为 未启动状态
     private volatile int state = ST_NOT_STARTED;
 
     private volatile long gracefulShutdownQuietPeriod;
@@ -165,11 +170,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     protected SingleThreadEventExecutor(EventExecutorGroup parent, Executor executor,
                                         boolean addTaskWakesUp, Queue<Runnable> taskQueue,
                                         RejectedExecutionHandler rejectedHandler) {
+        //parent为Reactor所属的NioEventLoopGroup Reactor线程组
         super(parent);
+        //向Reactor添加任务时，是否唤醒Selector停止轮询IO就绪事件，马上执行异步任务, 默认false
         this.addTaskWakesUp = addTaskWakesUp;
+        //Reactor异步任务队列的大小, 最大16
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
+        //用于启动 Reactor 线程的 executor -> ThreadPerTaskExecutor
         this.executor = ThreadExecutorMap.apply(executor, this);
+        //普通任务队列
         this.taskQueue = ObjectUtil.checkNotNull(taskQueue, "taskQueue");
+        //任务队列满时的拒绝策略
         this.rejectedExecutionHandler = ObjectUtil.checkNotNull(rejectedHandler, "rejectedHandler");
     }
 
@@ -814,6 +825,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     @Override
     public void execute(Runnable task) {
+        // 往下
         execute0(task);
     }
 
@@ -832,9 +844,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     }
 
     private void execute(Runnable task, boolean immediate) {
+        //当前线程是否为Reactor线程
         boolean inEventLoop = inEventLoop();
+
+        //addTaskWakesUp = true  addTask唤醒Reactor线程执行任务
         addTask(task);
         if (!inEventLoop) {
+
+            /**
+             * 如果当前线程不是Reactor线程，则启动Reactor线程
+             * 这里可以看出Reactor线程的启动是通过 向NioEventLoop添加异步任务时启动的
+             */
             startThread();
             if (isShutdown()) {
                 boolean reject = false;
@@ -948,14 +968,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     private static final long SCHEDULE_PURGE_INTERVAL = TimeUnit.SECONDS.toNanos(1);
 
     private void startThread() {
+        // Reactor线程初始化状态为ST_NOT_STARTED,首先CAS更新状态为ST_STARTED
         if (state == ST_NOT_STARTED) {
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
+                    // 启动Reactor线程
                     doStartThread();
                     success = true;
                 } finally {
                     if (!success) {
+                        // 启动失败的话，需要将Reactor线程状态改回ST_NOT_STARTED
                         STATE_UPDATER.compareAndSet(this, ST_STARTED, ST_NOT_STARTED);
                     }
                 }

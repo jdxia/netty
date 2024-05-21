@@ -78,6 +78,7 @@ public final class NioDatagramChannel
 
     private Map<InetAddress, List<MembershipKey>> memberships;
 
+    //创建JDK NIO ServerSocketChannel
     private static DatagramChannel newSocket(SelectorProvider provider) {
         try {
             /**

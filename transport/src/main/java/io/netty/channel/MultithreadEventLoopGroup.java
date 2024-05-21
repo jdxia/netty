@@ -31,12 +31,20 @@ import java.util.concurrent.ThreadFactory;
  * the same time.
  */
 public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutorGroup implements EventLoopGroup {
+    /**
+     * 主要的功能就是用来确定Reactor线程组内Reactor的个数
+     */
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(MultithreadEventLoopGroup.class);
 
+    //默认Reactor个数
     private static final int DEFAULT_EVENT_LOOP_THREADS;
 
     static {
+        /**
+         * 可以通过系统变量 -D io.netty.eventLoopThreads"指定
+         * 如果不指定，那么默认的就是 NettyRuntime.availableProcessors() * 2
+         */
         DEFAULT_EVENT_LOOP_THREADS = Math.max(1, SystemPropertyUtil.getInt(
                 "io.netty.eventLoopThreads", NettyRuntime.availableProcessors() * 2));
 
@@ -47,8 +55,14 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     /**
      * @see MultithreadEventExecutorGroup#MultithreadEventExecutorGroup(int, Executor, Object...)
+     *
+     * args是
+     * 1. selectorProvider
+     * 2. selectStrategyFactory 就是 {@link DefaultSelectStrategyFactory}
+     * 3. RejectedExecutionHandlers.reject()
      */
     protected MultithreadEventLoopGroup(int nThreads, Executor executor, Object... args) {
+        // 当nThread参数设置为0采用默认设置时，Reactor 线程组内的 Reactor 个数则设置为 DEFAULT_EVENT_LOOP_THREADS
         super(nThreads == 0 ? DEFAULT_EVENT_LOOP_THREADS : nThreads, executor, args);
     }
 
@@ -83,6 +97,11 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
 
     @Override
     public ChannelFuture register(Channel channel) {
+        /**
+         * 用轮询round-robin的方式选择Reactor
+         *
+         * {@link SingleThreadEventLoop#register(Channel)}
+         */
         return next().register(channel);
     }
 

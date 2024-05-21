@@ -25,12 +25,23 @@ import java.lang.reflect.Constructor;
  * A {@link ChannelFactory} that instantiates a new {@link Channel} by invoking its default constructor reflectively.
  */
 public class ReflectiveChannelFactory<T extends Channel> implements ChannelFactory<T> {
-
+    //NioServerSocketChannel 构造器
     private final Constructor<? extends T> constructor;
 
+    /**
+     * 泛型参数T extends Channel表示的是要通过工厂类创建的Channel类型，这里我们初始化的是NioServerSocketChannel。
+     * 在ReflectiveChannelFactory的构造器中通过反射的方式获取NioServerSocketChannel的构造器。
+     * 在 newChannel 方法中通过构造器反射创建NioServerSocketChannel实例。
+     *
+     * 注意这时只是配置阶段，NioServerSocketChannel此时并未被创建。它是在启动的时候才会被创建出来
+     */
     public ReflectiveChannelFactory(Class<? extends T> clazz) {
         ObjectUtil.checkNotNull(clazz, "clazz");
         try {
+            /**
+             * 传进来那个类就把那个类的构造方法存起来
+             * 反射获取 NioServerSocketChannel 的构造器
+             */
             this.constructor = clazz.getConstructor();
         } catch (NoSuchMethodException e) {
             throw new IllegalArgumentException("Class " + StringUtil.simpleClassName(clazz) +
@@ -41,6 +52,7 @@ public class ReflectiveChannelFactory<T extends Channel> implements ChannelFacto
     @Override
     public T newChannel() {
         try {
+            //创建 NioServerSocketChannel 实例
             return constructor.newInstance();
         } catch (Throwable t) {
             throw new ChannelException("Unable to create Channel from class " + constructor.getDeclaringClass(), t);

@@ -32,10 +32,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public abstract class MultithreadEventExecutorGroup extends AbstractEventExecutorGroup {
 
+    //Reactor线程组中的Reactor集合
     private final EventExecutor[] children;
     private final Set<EventExecutor> readonlyChildren;
+
+    // 关闭用到的变量
     private final AtomicInteger terminatedChildren = new AtomicInteger();
+
+    //关闭future
     private final Promise<?> terminationFuture = new DefaultPromise(GlobalEventExecutor.INSTANCE);
+    //从Reactor集合中选择一个特定的Reactor的绑定策略 用于channel注册绑定到一个固定的Reactor上
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
 
     /**
@@ -67,20 +73,43 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
      * @param executor          the Executor to use, or {@code null} if the default should be used.
      * @param chooserFactory    the {@link EventExecutorChooserFactory} to use.
      * @param args              arguments which will passed to each {@link #newChild(Executor, Object...)} call
+     *
+     * args是
+     * 1. selectorProvider
+     * 2. selectStrategyFactory 就是 DefaultSelectStrategyFactory
+     * 3. RejectedExecutionHandlers.reject()
      */
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
+        /**
+         * EventExecutorChooserFactory chooserFactory: 当客户端连接完成三次握手后，Main Reactor会创建客户端连接NioSocketChannel，并将其绑定到Sub Reactor Group中的一个固定Reactor，
+         *                              那么具体要绑定到哪个具体的Sub Reactor上呢？
+         *                              这个绑定策略就是由chooserFactory来创建的。默认为 DefaultEventExecutorChooserFactory
+         */
+
         checkPositive(nThreads, "nThreads");
 
         if (executor == null) {
+            // executor 用于创建Reactor线程
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
         children = new EventExecutor[nThreads];
 
+        //循环创建reactor group中的Reactor
         for (int i = 0; i < nThreads; i ++) {
             boolean success = false;
             try {
+                /**
+                 * Reactor线程组 NioEventLoopGroup 包含多个Reactor，存放于 private final EventExecutor[] children 数组中。
+                 *
+                 * 所以下面的事情就是创建 nThread 个Reactor，并存放于EventExecutor[] children字段中
+                 */
+
+                /**
+                 * 创建reactor, 实现看 {@link io.netty.channel.nio.NioEventLoopGroup#newChild(Executor, Object...)}
+                 * 重点
+                 */
                 children[i] = newChild(executor, args);
                 success = true;
             } catch (Exception e) {
@@ -107,19 +136,32 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
                 }
             }
         }
+        // reactor group中的Reactor 创建完了
 
+        /**
+         * 这些Channel究竟应该注册到哪个Reactor上呢？这就需要一个绑定的策略来平均分配
+         * 创建channel到Reactor的绑定策略
+         *
+         * 从Reactor集合中选择一个特定的Reactor的绑定策略 用于channel注册绑定到一个固定的Reactor上
+         */
         chooser = chooserFactory.newChooser(children);
 
+        // 创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
+                // 通过AtomicInteger terminatedChildren变量记录已经关闭的Reactor个数，用来判断NioEventLoopGroup中的Reactor是否已经全部关闭。
                 if (terminatedChildren.incrementAndGet() == children.length) {
+                    //当所有Reactor关闭后 才认为是关闭成功
                     terminationFuture.setSuccess(null);
                 }
             }
         };
 
+        //为所有Reactor添加terminationListener
         for (EventExecutor e: children) {
+            // 有创建就有启动，有启动就有关闭，这里会创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调
+            // 看terminationListener回调的逻辑
             e.terminationFuture().addListener(terminationListener);
         }
 

@@ -32,6 +32,14 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
     @Override
     public EventExecutorChooser newChooser(EventExecutor[] executors) {
+        /**
+         * 有两个分支，不同之处在于需要判断Reactor线程组中的Reactor个数是否为2的次幂
+         *
+         * Netty中的绑定策略就是采用round-robin轮询的方式来挨个选择Reactor进行绑定。
+         * 采用round-robin的方式进行负载均衡，我们一般会用round % reactor.length取余的方式来挨个平均的定位到对应的Reactor上。
+         * 如果Reactor的个数reactor.length恰好是2的次幂，那么就可以用位操作&运算round & reactor.length -1来代替%运算round % reactor.length，
+         * 因为位运算的性能更高。
+         */
         if (isPowerOfTwo(executors.length)) {
             return new PowerOfTwoEventExecutorChooser(executors);
         } else {
@@ -53,6 +61,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 利用&运算的方式idx.getAndIncrement() & executors.length - 1来进行绑定
             return executors[idx.getAndIncrement() & executors.length - 1];
         }
     }
@@ -70,6 +79,7 @@ public final class DefaultEventExecutorChooserFactory implements EventExecutorCh
 
         @Override
         public EventExecutor next() {
+            // 利用%运算的方式Math.abs(idx.getAndIncrement() % executors.length)来进行绑定
             return executors[(int) Math.abs(idx.getAndIncrement() % executors.length)];
         }
     }

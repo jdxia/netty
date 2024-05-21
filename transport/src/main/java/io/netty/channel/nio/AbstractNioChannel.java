@@ -50,7 +50,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private static final InternalLogger logger =
             InternalLoggerFactory.getInstance(AbstractNioChannel.class);
 
+    //JDK NIO原生Selectable Channel
     private final SelectableChannel ch;
+    // Channel监听事件集合 这里是SelectionKey.OP_ACCEPT事件
     protected final int readInterestOp;
     volatile SelectionKey selectionKey;
     boolean readPending;
@@ -77,10 +79,12 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
+        // super 往下
         super(parent);
         this.ch = ch;
         this.readInterestOp = readInterestOp;
         try {
+            //设置Channel为非阻塞 配合IO多路复用模型
             ch.configureBlocking(false);
         } catch (IOException e) {
             try {
@@ -382,6 +386,26 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         boolean selected = false;
         for (;;) {
             try {
+                /**
+                 * 将NettyNioServerSocketChannel中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上
+                 *
+                 * 看 register 方法参数
+                 *
+                 * Selector：表示JDK NIO Channel将要向哪个Selector进行注册
+                 *
+                 * int ops： 表示Channel上感兴趣的IO事件，当对应的IO事件就绪时，Selector会返回Channel对应的SelectionKey
+                 * 这里NioServerSocketChannel向Reactor中的Selector注册的IO事件为0，这个操作的主要目的是先获取到Channel在Selector中对应的SelectionKey，完成注册。
+                 * 当绑定操作完成后，在去向SelectionKey添加感兴趣的IO事件~~~OP_ACCEPT事件。
+                 *
+                 * SelectionKey可以理解为Channel在Selector上的特殊表示形式，
+                 * SelectionKey中封装了Channel感兴趣的IO事件集合~~~interestOps，以及IO就绪的事件集合~~readyOps，
+                 * 同时也封装了对应的JDK NIO Channel以及注册的Selector。
+                 * 最后还有一个重要的属性attachment，可以允许我们在SelectionKey上附加一些自定义的对象
+                 *
+                 * Object attachment：向SelectionKey中添加用户自定义的附加对象。
+                 * 通过SelectableChannel#register方法将Netty自定义的NioServerSocketChannel（这里的this指针）附着在SelectionKey的attechment属性上，完成Netty自定义Channel与JDK NIO Channel的关系绑定。
+                 * 这样在每次对Selector进行IO就绪事件轮询时，Netty 都可以从 JDK NIO Selector返回的SelectionKey中获取到自定义的Channel对象（这里指的就是NioServerSocketChannel）
+                 */
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

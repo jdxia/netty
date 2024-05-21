@@ -89,6 +89,16 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      */
     private boolean registered;
 
+    /**
+     * <pre>
+     * +=================================================================+
+     * |                          pipeline                               |
+     * +=================================================================+
+     * |  [HeadContext] ↔ [ChannelHandlerContext] ↔ [ChannelHandlerContext] ↔ [ChannelHandlerContext] ↔ [TailContext]  |
+     * |                    └─ channelHandlerA        └─ channelHandlerB         └─ channelHandlerC                    |
+     * +-----------------------------------------------------------------+
+     * </pre>
+     **/
     protected DefaultChannelPipeline(Channel channel) {
         this.channel = ObjectUtil.checkNotNull(channel, "channel");
         succeededFuture = new SucceededChannelFuture(channel, null);
@@ -934,6 +944,17 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     @Override
     public final ChannelFuture bind(SocketAddress localAddress) {
+        /**
+         * 事件在pipeline中的传播具有方向性：
+         * inbound事件从HeadContext开始逐个向后传播直到TailContext。
+         * outbound事件则是反向传播，从TailContext开始反向向前传播直到HeadContext。
+         *
+         * inbound事件只能被pipeline中的ChannelInboundHandler响应处理outbound事件只能被pipeline中的ChannelOutboundHandler响应处理
+         *
+         *
+         * 这里的bind事件在Netty中被定义为outbound事件，所以它在pipeline中是反向传播。先从TailContext开始反向传播直到HeadContext。
+         * 然而bind的核心逻辑也正是实现在HeadContext中。
+         */
         return tail.bind(localAddress);
     }
 
@@ -1331,6 +1352,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         @Override
         public void bind(
                 ChannelHandlerContext ctx, SocketAddress localAddress, ChannelPromise promise) {
+            /**
+             * 触发AbstractChannel->bind方法 执行JDK NIO SelectableChannel 执行底层绑定操作
+             * {@link AbstractChannel.AbstractUnsafe#bind(SocketAddress, ChannelPromise)}
+             */
             unsafe.bind(localAddress, promise);
         }
 

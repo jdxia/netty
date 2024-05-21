@@ -1,11 +1,16 @@
 <configuration debug="false">
-  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder>
-      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-    </encoder>
-  </appender>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+<!--            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>-->
 
-  <root level="${logLevel:-info}">
-    <appender-ref ref="STDOUT" />
-  </root>
+            <pattern>%blue([%date]) %blue([%thread]) %cyan([%-40.40logger{39}:%line]) %highlight([%-5level]) - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 单独设置 Netty 日志级别 -->
+    <logger name="io.netty" level="TRACE"/>
+
+    <root level="${logLevel:-info}">
+        <appender-ref ref="STDOUT"/>
+    </root>
 </configuration>

@@ -27,6 +27,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
@@ -44,15 +45,28 @@ import java.util.concurrent.TimeUnit;
  *
  */
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
+    /**
+     * ServerBootstrap主要负责对主从Reactor线程组相关的配置进行管理，
+     * 其中带child前缀的配置方法是对从Reactor线程组的相关配置管理。
+     * 从Reactor线程组中的Sub Reactor负责管理的客户端NioSocketChannel相关配置存储在ServerBootstrap结构中
+     *
+     * 父类AbstractBootstrap则是主要负责对主Reactor线程组相关的配置进行管理，
+     * 以及主Reactor线程组中的Main Reactor负责处理的服务端ServerSocketChannel相关的配置管理
+     */
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
     // The order in which child ChannelOptions are applied is important they may depend on each other for validation
     // purposes.
+    //客户端SocketChannel对应的ChannelOption配置
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
+
     private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
     private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
+    //Sub Reactor线程组
     private volatile EventLoopGroup childGroup;
+
+    //socketChannel中pipeline中的处理handler
     private volatile ChannelHandler childHandler;
 
     public ServerBootstrap() { }
@@ -81,6 +95,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * {@link Channel}'s.
      */
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
+        //父类管理主Reactor线程组
         super.group(parentGroup);
         if (this.childGroup != null) {
             throw new IllegalStateException("childGroup set already");
@@ -96,6 +111,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      */
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         ObjectUtil.checkNotNull(childOption, "childOption");
+        // childOptions: 客户端SocketChannel对应的ChannelOption配置
+        // 相关的底层Socket选项，netty全部枚举在ChannelOption类中
         synchronized (childOptions) {
             if (value == null) {
                 childOptions.remove(childOption);
@@ -124,32 +141,52 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
      */
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
+        // 先保存
         this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
         return this;
     }
 
     @Override
     void init(Channel channel) {
+        // 向 NioServerSocketChannelConfig 设置 ServerSocketChannelOption
         setChannelOptions(channel, newOptionsArray(), logger);
+        // 向netty自定义的 NioServerSocketChannel 设置 attributes
         setAttributes(channel, newAttributesArray());
 
+        /**
+         * {@link NioServerSocketChannel#NioServerSocketChannel()} 里面初始化的
+         */
         ChannelPipeline p = channel.pipeline();
 
+        //获取从Reactor线程组
         final EventLoopGroup currentChildGroup = childGroup;
+
+        /**
+         * 获取用于初始化客户端 NioSocketChannel 的 ChannelInitializer
+         *
+         * 这里为什么不干脆直接将ChannelHandler添加到pipeline中，而是又使用到了ChannelInitializer呢？
+         * 1. 为了保证线程安全地初始化pipeline，所以初始化的动作需要由Reactor线程进行，而当前线程是用户程序的启动Main线程 并不是Reactor线程。这里不能立即初始化。
+         * 2. 初始化Channel中pipeline的动作，需要等到Channel注册到对应的Reactor中才可以进行初始化，当前只是创建好了NioServerSocketChannel，但并未注册到Main Reactor上
+         */
         final ChannelHandler currentChildHandler = childHandler;
+        //获取用户配置的客户端 SocketChannel 的 channelOption 以及 attributes
         final Entry<ChannelOption<?>, Object>[] currentChildOptions = newOptionsArray(childOptions);
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
         final Collection<ChannelInitializerExtension> extensions = getInitializerExtensions();
 
+        //向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
+                //ServerBootstrap中用户指定的channelHandler
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
+                    // 外面写的 LoggingHandler
                     pipeline.addLast(handler);
                 }
 
+                //添加用于接收客户端连接的acceptor
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
