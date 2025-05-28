@@ -359,7 +359,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             channel = channelFactory.newChannel();
 
             /**
-             * 初始化NioServerSocketChannel {@link ServerBootstrap#init(Channel)}
+             * 初始化NioServerSocketChannel 还有设置属性和配置, 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+             * {@link ServerBootstrap#init(Channel)}
              * 重点
              */
             init(channel);
@@ -375,6 +376,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         }
 
         /**
+         * 重点
          * 向MainReactor注册ServerSocketChannel
          * 从ServerBootstrap获取主Reactor线程组NioEventLoopGroup，将NioServerSocketChannel注册到NioEventLoopGroup中。
          * {@link MultithreadEventLoopGroup#register(Channel)}

@@ -80,7 +80,7 @@ public class NettyServer {
                     /**
                      * ServerBootstrap启动类方法带有child前缀的均是设置客户端NioSocketChannel属性的
                      */
-                    .childOption(ChannelOption.SO_KEEPALIVE, true)
+                    .childOption(ChannelOption.SO_KEEPALIVE, Boolean.TRUE)
                     .childOption(ChannelOption.TCP_NODELAY, Boolean.TRUE)
 
                     /**
@@ -164,7 +164,5 @@ public class NettyServer {
         }
 
     }
-
-
 
 }

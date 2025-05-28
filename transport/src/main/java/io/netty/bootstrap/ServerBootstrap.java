@@ -15,20 +15,10 @@
  */
 package io.netty.bootstrap;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelConfig;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandler;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.ServerChannel;
+import io.netty.channel.*;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.util.AttributeKey;
+import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
@@ -154,7 +144,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         setAttributes(channel, newAttributesArray());
 
         /**
-         * {@link NioServerSocketChannel#NioServerSocketChannel()} 里面初始化的
+         * pipeline是在 {@link NioServerSocketChannel#NioServerSocketChannel()} 里面初始化的
+         * ServerSocket的 pipeline
          */
         ChannelPipeline p = channel.pipeline();
 
@@ -174,7 +165,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
         final Collection<ChannelInitializerExtension> extensions = getInitializerExtensions();
 
-        //向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+        /**
+         * 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+         * {@link DefaultChannelPipeline#addLast(ChannelHandler...)}
+         */
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
             public void initChannel(final Channel ch) {
@@ -186,10 +180,14 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                     pipeline.addLast(handler);
                 }
 
-                //添加用于接收客户端连接的acceptor
+                /**
+                 * execute 非常重要
+                 * {@link SingleThreadEventExecutor#execute(Runnable)}
+                 */
                 ch.eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
+                        // 添加用于接收客户端连接的acceptor
                         pipeline.addLast(new ServerBootstrapAcceptor(
                                 ch, currentChildGroup, currentChildHandler, currentChildOptions, currentChildAttrs,
                                 extensions));

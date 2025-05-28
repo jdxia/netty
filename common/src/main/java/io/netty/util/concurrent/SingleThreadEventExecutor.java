@@ -836,6 +836,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void execute0(@Schedule Runnable task) {
         ObjectUtil.checkNotNull(task, "task");
+        // 往下
         execute(task, wakesUpForTask(task));
     }
 
@@ -847,13 +848,14 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         //当前线程是否为Reactor线程
         boolean inEventLoop = inEventLoop();
 
-        //addTaskWakesUp = true  addTask唤醒Reactor线程执行任务
+        // 添加任务
         addTask(task);
         if (!inEventLoop) {
 
             /**
              * 如果当前线程不是Reactor线程，则启动Reactor线程
              * 这里可以看出Reactor线程的启动是通过 向NioEventLoop添加异步任务时启动的
+             * 往下
              */
             startThread();
             if (isShutdown()) {
@@ -973,7 +975,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             if (STATE_UPDATER.compareAndSet(this, ST_NOT_STARTED, ST_STARTED)) {
                 boolean success = false;
                 try {
-                    // 启动Reactor线程
+                    // 启动Reactor线程, 往下
                     doStartThread();
                     success = true;
                 } finally {
@@ -1006,6 +1008,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private void doStartThread() {
         assert thread == null;
+        /**
+         * 看这个
+         * {@link ThreadPerTaskExecutor#execute(Runnable)}
+         */
         executor.execute(new Runnable() {
             @Override
             public void run() {
@@ -1017,6 +1023,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 boolean success = false;
                 updateLastExecutionTime();
                 try {
+                    /**
+                     * {@link io.netty.channel.nio.NioEventLoop#run()}
+                     * 核心重点
+                     */
                     SingleThreadEventExecutor.this.run();
                     success = true;
                 } catch (Throwable t) {

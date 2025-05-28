@@ -1,0 +1,82 @@
+autoDetectedPackages:
+- com.sun.nio.sctp
+- io.netty.bootstrap
+- io.netty.buffer
+- io.netty.channel
+- io.netty.example.demo
+- io.netty.example.discard
+- io.netty.example.dns
+- io.netty.example.echo
+- io.netty.example.factorial
+- io.netty.example.file
+- io.netty.example.haproxy
+- io.netty.example.http
+- io.netty.example.ipfilter
+- io.netty.example.localecho
+- io.netty.example.memcache
+- io.netty.example.mqtt
+- io.netty.example.objectecho
+- io.netty.example.ocsp
+- io.netty.example.portunification
+- io.netty.example.proxy
+- io.netty.example.qotm
+- io.netty.example.redis
+- io.netty.example.rxtx
+- io.netty.example.sctp
+- io.netty.example.securechat
+- io.netty.example.socksproxy
+- io.netty.example.spdy
+- io.netty.example.stomp
+- io.netty.example.telnet
+- io.netty.example.udt
+- io.netty.example.uptime
+- io.netty.example.util
+- io.netty.example.worldclock
+- io.netty.handler
+- io.netty.microbench.buffer
+- io.netty.microbench.channel
+- io.netty.microbench.concurrent
+- io.netty.microbench.handler
+- io.netty.microbench.headers
+- io.netty.microbench.http
+- io.netty.microbench.internal
+- io.netty.microbench.redis
+- io.netty.microbench.search
+- io.netty.microbench.snappy
+- io.netty.microbench.stomp
+- io.netty.microbench.util
+- io.netty.microbench.websocket
+- io.netty.microbenchmark.common
+- io.netty.nativeimage
+- io.netty.osgitests
+- io.netty.resolver
+- io.netty.test.udt
+- io.netty.testsuite.autobahn
+- io.netty.testsuite.http2
+- io.netty.testsuite.shading
+- io.netty.testsuite.svm
+- io.netty.testsuite.transport
+- io.netty.testsuite.util
+- io.netty.testsuite_native
+- io.netty.util
+enableAutoDetect: true
+entryDisplayConfig:
+  excludedPathPatterns: []
+  skipJsCss: true
+funcDisplayConfig:
+  skipConstructors: false
+  skipFieldAccess: true
+  skipFieldChange: true
+  skipGetters: false
+  skipNonProjectPackages: false
+  skipPrivateMethods: false
+  skipSetters: false
+ignoreSameClassCall: null
+ignoreSamePackageCall: null
+includedPackagePrefixes: null
+includedParentClasses: null
+name: xcodemap-filter
+recordMode: all
+sourceDisplayConfig:
+  color: blue
+startOnDebug: false

@@ -66,6 +66,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ChannelInitializer.class);
     // We use a Set as a ChannelInitializer is usually shared between all Channels in a Bootstrap /
     // ServerBootstrap. This way we can reduce the memory usage compared to use Attributes.
+    //ChannelInitializer实例是被所有的Channel共享的，用于初始化ChannelPipeline
     //通过Set集合保存已经初始化的ChannelPipeline，避免重复初始化同一ChannelPipeline
     private final Set<ChannelHandlerContext> initMap = Collections.newSetFromMap(
             new ConcurrentHashMap<ChannelHandlerContext, Boolean>());
@@ -97,6 +98,7 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
             ctx.pipeline().fireChannelRegistered();
 
             // We are done with init the Channel, removing all the state for the Channel now.
+            //初始化工作完成后，需要将自身从pipeline中移除
             removeState(ctx);
         } else {
             // Called initChannel(...) before which is the expected behavior, so just forward the event.

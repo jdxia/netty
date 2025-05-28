@@ -11,6 +11,9 @@ import java.nio.charset.StandardCharsets;
 // 这个类很像 reactor 模式里的processor线程，负责读区请求然后返回响应
 @Slf4j
 public class NettyServerHandler extends ChannelInboundHandlerAdapter {
+
+
+
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         // 第一步，获取客户端请求的内容

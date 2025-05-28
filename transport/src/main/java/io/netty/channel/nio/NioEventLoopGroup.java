@@ -210,7 +210,7 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
          *   前边提到Netty中的Reactor主要工作是轮询注册其上的所有Channel上的IO就绪事件，处理IO就绪事件。
          *   除了这些主要的工作外，Netty为了极致的压榨Reactor的性能，还会让它做一些异步任务的执行工作。
          *   既然要执行异步任务，那么Reactor中就需要一个队列来保存任务。
-         *   这里的EventLoopTaskQueueFactory就是用来创建这样的一个队列来保存Reactor中待执行的异步任务。
+         *   这里的 EventLoopTaskQueueFactory 就是用来创建这样的一个队列来保存Reactor中待执行的异步任务。
          *
          *
          * 可以把Reactor理解成为一个单线程的线程池，类似于JDK中的SingleThreadExecutor，仅用一个线程来执行轮询IO就绪事件，处理IO就绪事件，执行异步任务。

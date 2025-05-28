@@ -512,7 +512,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             /**
              * 执行channel注册的操作必须是Reactor线程来完成
              *
-             * 1: 如果当前执行线程是Reactor线程，则直接执行register0进行注册
+             * 1: 如果当前执行线程是Reactor线程，则直接执行 register0 进行注册
              * 2：如果当前执行线程是外部线程，则需要将register0注册操作 封装程异步Task 由Reactor线程执行
              */
             if (eventLoop.inEventLoop()) {
@@ -556,6 +556,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 boolean firstRegistration = neverRegistered;
 
                 /**
+                 * 重点
                  * 执行真正的注册操作
                  * {@link AbstractNioChannel#doRegister()}
                  */
@@ -568,7 +569,15 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
 
-                //回调pipeline中添加的ChannelInitializer的handlerAdded方法，在这里初始化channelPipeline
+                /**
+                 * 回调pipeline中添加的ChannelInitializer的handlerAdded方法，在这里初始化channelPipeline
+                 * 触发回调pipeline中添加的ChannelInitializer的handlerAdded方法，在handlerAdded方法中利用前面提到的ChannelInitializer初始化ChannelPipeline
+                 *
+                 * 初始化ChannelPipeline的时机是当Channel向对应的Reactor注册成功后，在handlerAdded事件回调中利用ChannelInitializer进行初始化。
+                 *
+                 * 当NioServerSocketChannel注册到Main Reactor上的Selector后，
+                 * Netty通过调用pipeline.invokeHandlerAddedIfNeeded()开始回调NioServerSocketChannel中pipeline里的ChannelHandler的handlerAdded方法。
+                 */
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 //设置regFuture为success，触发operationComplete回调,将bind操作放入Reactor的任务队列中，等待Reactor线程执行。
@@ -576,7 +585,6 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                 /**
                  * 触发channelRegister事件
-                 * 触发回调pipeline中添加的ChannelInitializer的handlerAdded方法
                  */
                 pipeline.fireChannelRegistered();
                 // Only fire a channelActive if the channel has never been registered. This prevents firing

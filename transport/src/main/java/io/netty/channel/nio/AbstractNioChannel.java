@@ -79,7 +79,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
      * @param readInterestOp    the ops to set to receive data from the {@link SelectableChannel}
      */
     protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
-        // super 往下
+        /**
+         * super 往下
+         * 里面会创建一个 pipeline
+         */
         super(parent);
         this.ch = ch;
         this.readInterestOp = readInterestOp;
@@ -403,7 +406,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
                  * 最后还有一个重要的属性attachment，可以允许我们在SelectionKey上附加一些自定义的对象
                  *
                  * Object attachment：向SelectionKey中添加用户自定义的附加对象。
-                 * 通过SelectableChannel#register方法将Netty自定义的NioServerSocketChannel（这里的this指针）附着在SelectionKey的attechment属性上，完成Netty自定义Channel与JDK NIO Channel的关系绑定。
+                 * 通过SelectableChannel#register方法将Netty自定义的NioServerSocketChannel（这里的this指针）附着在SelectionKey的att属性上，完成Netty自定义Channel与JDK NIO Channel的关系绑定。
                  * 这样在每次对Selector进行IO就绪事件轮询时，Netty 都可以从 JDK NIO Selector返回的SelectionKey中获取到自定义的Channel对象（这里指的就是NioServerSocketChannel）
                  */
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);

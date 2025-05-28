@@ -99,7 +99,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
     public ChannelFuture register(Channel channel) {
         /**
          * 用轮询round-robin的方式选择Reactor
-         *
+         * 调用 register 的就是 EventLoop
          * {@link SingleThreadEventLoop#register(Channel)}
          */
         return next().register(channel);

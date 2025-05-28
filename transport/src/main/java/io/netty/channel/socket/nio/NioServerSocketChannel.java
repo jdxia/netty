@@ -92,8 +92,14 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link SelectorProvider} and protocol family (supported only since JDK 15).
      */
     public NioServerSocketChannel(SelectorProvider provider, InternetProtocolFamily family) {
-        // 可以先看下 newChannel 再看 this
-        // this 里面有 NioServerSocketChannelConfig
+
+        /**
+         * 可以先看下 newChannel 再看 this
+         *
+         * newChannel里面创建了 ServerSocketChannel
+         *
+         * this 里面有 NioServerSocketChannelConfig
+         */
         this(newChannel(provider, family));
     }
 
@@ -101,7 +107,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
-        //父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
+        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
         super(null, channel, SelectionKey.OP_ACCEPT);
 
         /**
