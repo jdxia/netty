@@ -22,6 +22,10 @@ public class NettyServer {
 
     public static void main(String[] args) throws InterruptedException {
         /**
+         * java nio里面的 selector类似epoll, socketChannel类似socket资源描述符, SelectionKey就是监听的事件
+         * 服务器监听一个端口会出现serverSocketChanel , 然后有网络连接后会是socketChannel, 后续就是通过这个socketChannel和客户端通信
+         *
+         *
          * JDK的 NIO 默认实现是水平触发，Netty 是边缘触发(默认)和水平触发可切换
          * Netty 实现的垃圾回收更少、性能更好。
          */
