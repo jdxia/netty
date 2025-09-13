@@ -93,7 +93,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         /**
          * 为channel分配独立的pipeline用于IO事件编排
-         * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler。
+         * pipeline其实是一个ChannelHandlerContext类型的双向链表。
+         * 头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler。
          * 往下
          */
         pipeline = newChannelPipeline();

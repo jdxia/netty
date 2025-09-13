@@ -53,7 +53,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     volatile EventLoopGroup group;
 
     @SuppressWarnings("deprecation")
-    //用于创建ServerSocketChannel  ReflectiveChannelFactory
+    //用于创建 ServerSocketChannel  ReflectiveChannelFactory
     private volatile ChannelFactory<? extends C> channelFactory;
     private volatile SocketAddress localAddress;
 
@@ -228,9 +228,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
      * call the super method in that case.
      */
     public B validate() {
+
+        // Main Reactor线程组
         if (group == null) {
             throw new IllegalStateException("group not set");
         }
+
+        // ServerSocketChannel
         if (channelFactory == null) {
             throw new IllegalStateException("channel or channelFactory not set");
         }
@@ -355,12 +359,12 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         try {
             /**
              * 里面会 创建 NioServerSocketChannel 实例, 看下构造函数 {@link NioServerSocketChannel#NioServerSocketChannel()}
-             * ReflectiveChannelFactory通过泛型，反射，工厂的方式灵活创建不同类型的channel
+             * ReflectiveChannelFactory通过泛型，反射，工厂的方式灵活创建不同类型的channel {@link ReflectiveChannelFactory#newChannel()}
              */
             channel = channelFactory.newChannel();
 
             /**
-             * 初始化NioServerSocketChannel 还有设置属性和配置, 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+             * 初始化NioServerSocketChannel 还有设置属性和配置, 向NioServerSocketChannel中的pipeline添 加初始化ChannelHandler的逻辑
              * {@link ServerBootstrap#init(Channel)}
              * 重点
              */

@@ -50,6 +50,10 @@ mainframer
 
 # exclude vscode files
 .vscode/
+.vscode
+.cursor
+.cursor/
+.xcodemap
 *.factorypath
 
 # exclude file created by the flatten plugin

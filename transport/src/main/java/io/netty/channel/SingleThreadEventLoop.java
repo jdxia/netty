@@ -90,6 +90,7 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
      */
     @Override
     public ChannelFuture register(Channel channel) {
+        // register 往下
         return register(new DefaultChannelPromise(channel, this));
     }
 

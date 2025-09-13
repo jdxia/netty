@@ -107,10 +107,15 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      * Create a new instance using the given {@link ServerSocketChannel}.
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
-        // 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
+        /**
+         * 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT, 设置为接受事件
+         * 还会创建 pipeline
+         */
         super(null, channel, SelectionKey.OP_ACCEPT);
 
         /**
+         * 这边的 javaChannel() 就是 上面的 channel
+         *
          * 创建Channel的配置类NioServerSocketChannelConfig，在配置类中封装了对Channel底层的一些配置行为，以及JDK中的ServerSocket。
          * 以及创建NioServerSocketChannel接收数据用的Buffer分配器AdaptiveRecvByteBufAllocator
          *

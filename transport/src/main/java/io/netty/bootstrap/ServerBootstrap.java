@@ -146,6 +146,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         /**
          * pipeline是在 {@link NioServerSocketChannel#NioServerSocketChannel()} 里面初始化的
          * ServerSocket的 pipeline
+         * 重点
          */
         ChannelPipeline p = channel.pipeline();
 
