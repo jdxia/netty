@@ -1024,6 +1024,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 updateLastExecutionTime();
                 try {
                     /**
+                     *  SingleThreadEventExecutor.this 是 Java 的“外部类实例引用”语法
+                     *
                      * {@link io.netty.channel.nio.NioEventLoop#run()}
                      * 核心重点
                      */

@@ -15,6 +15,7 @@
  */
 package io.netty.channel;
 
+import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel.Unsafe;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ResourceLeakDetector;
@@ -80,6 +81,8 @@ public class DefaultChannelPipeline implements ChannelPipeline {
      * We only keep the head because it is expected that the list is used infrequently and its size is small.
      * Thus full iterations to do insertions is assumed to be a good compromised to saving memory and tail management
      * complexity.
+     *
+     * 这个的初始化是在 {@link ServerBootstrap#init(Channel)} 里面的  p.addLast(new ChannelInitializer<Channel>()  做的
      */
     private PendingHandlerCallback pendingHandlerCallbackHead;
 
@@ -105,6 +108,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         voidPromise =  new VoidChannelPromise(channel, true);
 
         tail = new TailContext(this);
+
+        /**
+         * HeadContext 既是入站又是出站处理器
+         *
+         */
         head = new HeadContext(this);
 
         head.next = tail;
@@ -220,6 +228,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // ChannelHandler.handlerAdded(...) once the channel is registered.
             if (!registered) {
                 newCtx.setAddPending();
+                // 往下
                 callHandlerCallbackLater(newCtx, true);
                 return this;
             }
@@ -388,6 +397,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             if (h == null) {
                 break;
             }
+            // 往下
             addLast(executor, null, h);
         }
 
@@ -658,6 +668,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             firstRegistration = false;
             // We are now registered to the EventLoop. It's time to call the callbacks for the ChannelHandlers,
             // that were added before the registration was done.
+            // 往下
             callHandlerAddedForAllHandlers();
         }
     }
@@ -1124,6 +1135,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             // This Channel itself was registered.
             registered = true;
 
+            // pendingHandlerCallbackHead 有值, 初始化可以看 pendingHandlerCallbackHead 这个上面注释
             pendingHandlerCallbackHead = this.pendingHandlerCallbackHead;
             // Null out so it can be GC'ed.
             this.pendingHandlerCallbackHead = null;
@@ -1133,7 +1145,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         // holding the lock and so produce a deadlock if handlerAdded(...) will try to add another handler from outside
         // the EventLoop.
         PendingHandlerCallback task = pendingHandlerCallbackHead;
+
+        // task是有值的
         while (task != null) {
+            /**
+             * {@link PendingHandlerAddedTask#execute()}
+             */
             task.execute();
             task = task.next;
         }
@@ -1145,6 +1162,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         PendingHandlerCallback task = added ? new PendingHandlerAddedTask(ctx) : new PendingHandlerRemovedTask(ctx);
         PendingHandlerCallback pending = pendingHandlerCallbackHead;
         if (pending == null) {
+            // 这里
             pendingHandlerCallbackHead = task;
         } else {
             // Find the tail of the linked-list.

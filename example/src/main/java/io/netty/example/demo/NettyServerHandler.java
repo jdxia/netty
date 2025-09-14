@@ -12,7 +12,11 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class NettyServerHandler extends ChannelInboundHandlerAdapter {
 
-
+    @Override
+    public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+        log.info("NettyServerHandler handlerAdded");
+        super.handlerAdded(ctx);
+    }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {

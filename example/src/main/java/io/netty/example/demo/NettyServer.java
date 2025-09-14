@@ -22,8 +22,9 @@ public class NettyServer {
 
     public static void main(String[] args) throws InterruptedException {
         /**
-         * java nio里面的 selector类似epoll, socketChannel类似socket资源描述符, SelectionKey就是监听的事件
-         * 服务器监听一个端口会出现serverSocketChanel , 然后有网络连接后会是socketChannel, 后续就是通过这个socketChannel和客户端通信
+         * java nio里面的 selector类似epoll, socketChannel类似socket资源描述符, SelectionKey就是监听的事件,
+         * 服务器监听一个端口会出现serverSocketChanel , 然后有网络连接后会是socketChannel, 后续就是通过这个socketChannel和客户端通信,
+         * SelectionKey 类似 某个 channel 在 selector 上的注册结果, 类似 epoll_event
          *
          * netty对jdk原生的selector做了优化,把JDK基于 HashSet 的 selectedKeys/publicSelectedKeys 改造成 Netty 自己的“数组实现”SelectedSelectionKeySet，
          * 并用一个包装 Selector（SelectedSelectionKeySetSelector）在每次 select 前“重置”该数组。这样可以显著降低遍历和插入的开销、减少 GC，而且还配合了对 JDK epoll 100% CPU bug 的重建 Selector 方案与“少唤醒/少阻塞”的 select 策略，整体提升吞吐与稳定性。
@@ -34,6 +35,23 @@ public class NettyServer {
          * 边缘触发 (ET) : 当某个资源（如 socket）就绪后，只要你还没有完全处理完（例如 socket 的缓冲区还有数据没读完），Selector 就不会返回这个事件
          *
          * netty 里面有 nioEventLoop (thread, selector, taskQueue, tailQueue) 他是一个线程, 里面会注册 很多 nioSocketChannel (看是那个group)
+         *
+         * netty将NettyNioServerSocketChannel中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上,
+         * 并且将Netty自定义的NioServerSocketChannel 附着在SelectionKey的att属性上，完成Netty自定义Channel与JDK NIO Channel的关系绑定。
+         *
+         * netty里面一个 channel有自己的pipeline
+         *
+         * ChannelPipeline (管道)
+         *    ↓ 事件传递
+         * [HandlerA] <-> [HandlerContextA]
+         * [HandlerB] <-> [HandlerContextB]
+         * [HandlerC] <-> [HandlerContextC]
+         *
+         * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler
+         *
+         * 注意:
+         * channel.write(...) 从 Tail 开始走整个出站链，经过所有出站处理器
+         * ctx.write(...) 从当前 Context 向前（靠近 Head）继续走出站链，只会经过当前节点之前的出站处理器
          */
 
         /**

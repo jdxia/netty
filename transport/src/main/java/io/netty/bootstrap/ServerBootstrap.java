@@ -167,8 +167,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         final Collection<ChannelInitializerExtension> extensions = getInitializerExtensions();
 
         /**
-         * 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
          * {@link DefaultChannelPipeline#addLast(ChannelHandler...)}
+         * 向NioServerSocketChannel中的pipeline添加初始化ChannelHandler的逻辑
+         * 注意这边添加的是 ChannelInitializer, 里面的 ChannelInitializer 会在其他地方被在外面 config().group().register(channel); 被调用
+         *
+         * 这个 addLast还做了一些其他事情, 在 callHandlerCallbackLater 里面把 pendingHandlerCallbackHead 初始化好了
          */
         p.addLast(new ChannelInitializer<Channel>() {
             @Override

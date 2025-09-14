@@ -54,6 +54,7 @@ mainframer
 .cursor
 .cursor/
 .xcodemap
+.xcodemap/
 *.factorypath
 
 # exclude file created by the flatten plugin

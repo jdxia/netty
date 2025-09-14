@@ -98,7 +98,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
          *
          * newChannel里面创建了 ServerSocketChannel
          *
-         * this 里面有 NioServerSocketChannelConfig
+         * this 里面有 NioServerSocketChannelConfig, 还会创建pipeline
          */
         this(newChannel(provider, family));
     }

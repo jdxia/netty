@@ -15,6 +15,7 @@
  */
 package io.netty.channel;
 
+import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.nio.AbstractNioChannel;
 import io.netty.channel.socket.ChannelOutputShutdownEvent;
@@ -559,6 +560,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 /**
                  * 重点
                  * 执行真正的注册操作
+                 * 将NettyNioServerSocketChannel中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上
                  * {@link AbstractNioChannel#doRegister()}
                  */
                 doRegister();
@@ -571,13 +573,16 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 // user may already fire events through the pipeline in the ChannelFutureListener.
 
                 /**
-                 * 回调pipeline中添加的ChannelInitializer的handlerAdded方法，在这里初始化channelPipeline
+                 * 回调pipeline中添加的 ChannelInitializer 的 handlerAdded 方法，在这里初始化channelPipeline
                  * 触发回调pipeline中添加的ChannelInitializer的handlerAdded方法，在handlerAdded方法中利用前面提到的ChannelInitializer初始化ChannelPipeline
                  *
                  * 初始化ChannelPipeline的时机是当Channel向对应的Reactor注册成功后，在handlerAdded事件回调中利用ChannelInitializer进行初始化。
                  *
                  * 当NioServerSocketChannel注册到Main Reactor上的Selector后，
                  * Netty通过调用pipeline.invokeHandlerAddedIfNeeded()开始回调NioServerSocketChannel中pipeline里的ChannelHandler的handlerAdded方法。
+                 *
+                 * 注意, 服务端监听的NioServerSocketChannel的pipeline是添加了一个 ChannelInitializer 可以看这里  {@link ServerBootstrap#init(Channel)}
+                 * 所以 ChannelHandler的handlerAdded方法 得看 {@link ChannelInitializer#handlerAdded(ChannelHandlerContext)}
                  */
                 pipeline.invokeHandlerAddedIfNeeded();
 
