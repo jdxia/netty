@@ -177,7 +177,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             @Override
             public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
-                //ServerBootstrap中用户指定的channelHandler
+                //ServerBootstrap中用户指定的channelHandler 就是 LoggingHandler
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
                     // 外面写的 LoggingHandler

@@ -358,7 +358,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         Channel channel = null;
         try {
             /**
-             * 里面会 创建 NioServerSocketChannel 实例, 看下构造函数 {@link NioServerSocketChannel#NioServerSocketChannel()}
+             * 里面会 创建 NioServerSocketChannel 实例, 看下构造函数 {@link NioServerSocketChannel#NioServerSocketChannel()} 会创建pipeline
              * ReflectiveChannelFactory通过泛型，反射，工厂的方式灵活创建不同类型的channel {@link ReflectiveChannelFactory#newChannel()}
              */
             channel = channelFactory.newChannel();

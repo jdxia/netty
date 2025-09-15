@@ -108,8 +108,8 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
      */
     public NioServerSocketChannel(ServerSocketChannel channel) {
         /**
-         * 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT, 设置为接受事件
-         * 还会创建 pipeline
+         * 父类AbstractNioChannel中保存JDK NIO原生ServerSocketChannel以及要监听的事件OP_ACCEPT
+         * 这里面还会创建一个pipeline
          */
         super(null, channel, SelectionKey.OP_ACCEPT);
 
