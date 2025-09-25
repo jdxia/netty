@@ -69,6 +69,9 @@ public class NettyServerHandler2 implements ChannelInboundHandler {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         System.out.println("Message received: " + msg);
+
+        // 与 channel.fireChannelRead(msg) 的区别：channel.fireXXX 总是从 Head 开始传播；
+        // ctx.fireXXX 从当前节点的“后一个可处理 Inbound 的节点”开始，避免重复经过自己之前的处理器
         ctx.fireChannelRead(msg); // 将消息传递给下一个处理器
     }
 

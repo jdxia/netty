@@ -8,8 +8,10 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.AttributeKey;
+import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +24,8 @@ public class NettyServer {
 
     public static void main(String[] args) throws InterruptedException {
         /**
+         * nio 3个核心部分: channel(通道), buffer(缓冲区), selector(选择器)
+         *
          * java nio里面的 selector类似epoll, socketChannel类似socket资源描述符, SelectionKey就是监听的事件,
          * 服务器监听一个端口会出现serverSocketChanel , 然后有网络连接后会是socketChannel, 后续就是通过这个socketChannel和客户端通信,
          * SelectionKey 类似 某个 channel 在 selector 上的注册结果, 类似 epoll_event
@@ -66,6 +70,7 @@ public class NettyServer {
          * 每种Channel类型实例都会对应一个PipeLine用于编排对应channel实例上的IO事件处理逻辑。
          * PipeLine中组织的就是ChannelHandler用于编写特定的IO处理逻辑
          */
+        printEnv();
         EventLoopGroup bossGroup = new NioEventLoopGroup(1);
 
         /**
@@ -191,6 +196,10 @@ public class NettyServer {
             workerGroup.shutdownGracefully();
         }
 
+    }
+
+    private static void printEnv() {
+        System.out.println("===> netty检测的可用核数" + NettyRuntime.availableProcessors());
     }
 
 }

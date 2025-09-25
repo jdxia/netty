@@ -1403,6 +1403,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         @Override
         public void read(ChannelHandlerContext ctx) {
+            //触发注册OP_ACCEPT或者OP_READ事件
             unsafe.beginRead();
         }
 
@@ -1437,10 +1438,17 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             }
         }
 
+        /**
+         * 在HeadContext中的channelActive回调中触发pipeline中的read事件。
+         * 当read事件再次传播到HeadContext时，触发HeadContext#read方法的回调。在read回调中调用channel底层操作类unsafe的beginRead方法向selector注册监听OP_ACCEPT事件。
+         */
         @Override
         public void channelActive(ChannelHandlerContext ctx) {
+            //pipeline中继续向后传播channelActive事件
             ctx.fireChannelActive();
 
+            //如果是autoRead 则自动触发read事件传播
+            //在read回调函数中 触发OP_ACCEPT注册
             readIfIsAutoRead();
         }
 
@@ -1463,6 +1471,10 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
         private void readIfIsAutoRead() {
             if (channel.config().isAutoRead()) {
+                /**
+                 * 如果是autoRead 则触发read事件传播
+                 * {@link AbstractChannel#read()}
+                 */
                 channel.read();
             }
         }

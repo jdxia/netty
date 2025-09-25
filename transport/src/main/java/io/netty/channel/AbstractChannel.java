@@ -286,6 +286,19 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     @Override
     public ChannelFuture bind(SocketAddress localAddress, ChannelPromise promise) {
+        /**
+         * 在pipeline中传播bind事件，触发回调pipeline中所有ChannelHandler的bind方法
+         *
+         * 事件在pipeline中的传播具有方向性：
+         * inbound事件从HeadContext开始逐个向后传播直到TailContext。
+         * outbound事件则是反向传播，从TailContext开始反向向前传播直到HeadContext
+         *
+         * inbound事件只能被pipeline中的ChannelInboundHandler响应处理
+         * outbound事件只能被pipeline中的ChannelOutboundHandler响应处理
+         *
+         * 然而这里的bind事件在Netty中被定义为outbound事件，所以它在pipeline中是反向传播。先从TailContext开始反向传播直到HeadContext
+         * 然而bind的核心逻辑也正是实现在HeadContext中, 重点
+         */
         return pipeline.bind(localAddress, promise);
     }
 
@@ -316,6 +329,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     @Override
     public Channel read() {
+        //触发read事件
         pipeline.read();
         return this;
     }
@@ -628,6 +642,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
+            /**
+             * 在 Linux 上，如果 UDP 套接字 绑定到某个具体本机 IP（非 0.0.0.0），将收不到广播报文（如 255.255.255.255 或子网广播 192.168.1.255）
+             * ——除非你用 root 权限 + SO_BINDTODEVICE 把“监听于任意地址”的套接字锁到某个网卡。
+             * Windows 行为不同，在 Windows 上绑定到具体 IP 仍能收到广播。该差异导致了跨平台（Windows → Linux）移植时 “Linux 收不到广播” 的困惑
+             */
             // See: https://github.com/netty/netty/issues/576
             if (Boolean.TRUE.equals(config().getOption(ChannelOption.SO_BROADCAST)) &&
                 localAddress instanceof InetSocketAddress &&
@@ -656,12 +675,20 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 return;
             }
 
-            //绑定成功后 channel激活 触发channelActive事件传播
+            /**
+             * 绑定成功后 channel激活 触发channelActive事件传播
+             */
             if (!wasActive && isActive()) {
                 invokeLater(new Runnable() {
                     @Override
                     public void run() {
-                        //pipeline中触发channelActive事件
+                        /**
+                         * pipeline中触发channelActive事件
+                         *
+                         * channelActive事件在Netty中定义为inbound事件，所以它在pipeline中的传播为正向传播，从HeadContext一直到TailContext为止
+                         * 在channelActive事件回调中需要触发向Selector指定需要监听的IO事件~~OP_ACCEPT事件。
+                         * 这块的逻辑主要在HeadContext中实现
+                         */
                         pipeline.fireChannelActive();
                     }
                 });
@@ -921,9 +948,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         @Override
         public final void beginRead() {
+            // 断言判断执行该方法的线程必须是Reactor线程
             assertEventLoop();
 
             try {
+                /**
+                 * 触发在selector上注册channel感兴趣的监听事件
+                 * {@link AbstractNioChannel#doBeginRead()}
+                 */
                 doBeginRead();
             } catch (final Exception e) {
                 invokeLater(new Runnable() {

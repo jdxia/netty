@@ -20,7 +20,7 @@ public class NettyClient {
     public static void main(String[] args) throws InterruptedException {
         //1. 创建线程组
         EventLoopGroup group = new NioEventLoopGroup();
-        //2. 创建客户端启动助手
+        //2. 创建客户端启动助手, 客户端用的不是 serverBootStrap 而是 Bootstrap
         Bootstrap bootstrap = new Bootstrap();
         //3. 设置线程组
         bootstrap.group(group)

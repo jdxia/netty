@@ -433,6 +433,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     @Override
     protected void doBeginRead() throws Exception {
+        // 前边提到在NioServerSocketChannel在向Main Reactor中的Selector注册后，会获得一个SelectionKey。这里首先要获取这个SelectionKey
+
         // Channel.read() or ChannelHandlerContext.read() was called
         final SelectionKey selectionKey = this.selectionKey;
         if (!selectionKey.isValid()) {
@@ -442,7 +444,19 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         readPending = true;
 
         final int interestOps = selectionKey.interestOps();
+
+        /**
+         * 从SelectionKey中获取NioServerSocketChannel感兴趣的IO事件集合 interestOps，当时在注册的时候interestOps设置为0
+         *
+         * ServerSocketChannel 初始化时 readInterestOp设置的是OP_ACCEPT事件
+         */
         if ((interestOps & readInterestOp) == 0) {
+            /**
+             * 将在NioServerSocketChannel初始化时设置的readInterestOp = OP_ACCEPT，
+             * 设置到SelectionKey中的interestOps集合中。这样Reactor中的Selector就开始监听interestOps集合中包含的IO事件了
+             *
+             * 添加OP_ACCEPT事件到interestOps集合中
+             */
             selectionKey.interestOps(interestOps | readInterestOp);
         }
     }
