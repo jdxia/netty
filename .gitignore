@@ -60,3 +60,7 @@ mainframer
 # exclude file created by the flatten plugin
 .flattened-pom.xml
 .java-version
+.spec-workflow
+
+.claude
+CLAUDE.md

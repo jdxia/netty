@@ -387,7 +387,9 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
          * {@link MultithreadEventLoopGroup#register(Channel)}
          */
         ChannelFuture regFuture = config().group().register(channel);
+
         if (regFuture.cause() != null) {
+            // 如果抛异常了, 并且已经监听了, 就关闭
             if (channel.isRegistered()) {
                 channel.close();
             } else {

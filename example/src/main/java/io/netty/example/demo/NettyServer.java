@@ -56,6 +56,11 @@ public class NettyServer {
          * 注意:
          * channel.write(...) 从 Tail 开始走整个出站链，经过所有出站处理器
          * ctx.write(...) 从当前 Context 向前（靠近 Head）继续走出站链，只会经过当前节点之前的出站处理器
+         *
+         * 以下三个条件中只要满足任意一个条件，Reactor线程就会被从Selector上唤醒：
+         * 当Selector轮询到有IO活跃事件发生时 (socket)。
+         * 当Reactor线程需要执行的定时任务到达任务执行时间deadline时。
+         * 当有异步任务提交给Reactor时，Reactor线程需要从Selector上被唤醒，这样才能及时的去执行异步任务。
          */
 
         /**

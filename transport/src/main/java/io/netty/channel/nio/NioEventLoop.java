@@ -694,22 +694,67 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * ┌─────────────────────────────┐
+     * │ Reactor线程工作流程起点      │
+     * └─────────────┬───────────────┘
+     *               │
+     *               ▼
+     *     ┌─────────────────────────┐
+     *     │ 检查是否有异步任务需要执行 │
+     *     └───────┬─────────┬───────┘
+     *             │Yes      │No
+     *             ▼         ▼
+     * ┌────────────────┐   ┌────────────────────┐
+     * │ 非阻塞轮询Selector │   │ 检查是否有定时任务   │
+     * └────────┬───────┘   └─────────┬──────────┘
+     *          │                      │
+     *          ▼                      ▼
+     *     ┌─────────────┐       ┌─────────────────────┐
+     *     │   是否有IO事件? │       │ No: selector阻塞直到 │
+     *     └──────┬──────┘       │     满足唤醒条件      │
+     *            │Yes            └─────────┬───────────┘
+     *            ▼                        │
+     *  ┌───────────────────┐              │
+     *  │ 处理IO就绪事件        │◄───────────┘
+     *  └──────────┬────────┘
+     *             │
+     *             ▼
+     *     ┌─────────────────┐
+     *     │ 执行异步任务       │
+     *     └─────────────────┘
+     *
+     * ────────────────────────────────────────────────
+     * 说明：
+     * 1. 如果此时有IO事件 → IO事件和异步任务一起执行
+     * 2. 如果没有IO事件   → 不会阻塞，马上执行异步任务
+     * 3. 定时任务会在Selector上注册deadline，或等待其他就绪事件
+     *
+     */
     @Override
     protected void run() {
+        /**
+         * jdk 空轮询的bug: https://bugs.java.com/bugdatabase/view_bug.do?bug_id=6670302
+         * 记录轮询次数 用于解决JDK epoll的空轮训bug
+         */
         int selectCnt = 0;
         for (;;) {
             try {
+                //轮询结果
                 int strategy;
                 try {
+                    //根据轮询策略获取轮询结果 这里的hasTasks()主要检查的是普通队列和尾部队列中是否有异步任务等待执行
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
                     case SelectStrategy.CONTINUE:
                         continue;
 
                     case SelectStrategy.BUSY_WAIT:
+                        // NIO不支持自旋（BUSY_WAIT）
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
                     case SelectStrategy.SELECT:
+                        // 核心逻辑是有任务需要执行，则Reactor线程立马执行异步任务，如果没有异步任务执行，则进行轮询IO事件
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
                             curDeadlineNanos = NONE; // nothing on the calendar
@@ -736,10 +781,25 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     continue;
                 }
 
+                // 执行到这里说明满足了唤醒条件，Reactor线程从selector上被唤醒开始处理IO就绪事件和执行异步任务
+
+                /**
+                 * Reactor线程需要保证及时的执行异步任务，只要有异步任务提交，就需要退出轮询。
+                 * 有IO事件就优先处理IO事件，然后处理异步任务
+                 */
+
                 selectCnt++;
                 cancelledKeys = 0;
+                //主要用于从IO就绪的SelectedKeys集合中剔除已经失效的selectKey
                 needsToSelectAgain = false;
+                //调整Reactor线程执行IO事件和执行异步任务的CPU时间比例 默认50，表示执行IO事件和异步任务的时间比例是一比一
                 final int ioRatio = this.ioRatio;
+                /**
+                 * 这里主要处理IO就绪事件，以及执行异步任务
+                 * 需要优先处理IO就绪事件，然后根据ioRatio设置的处理IO事件CPU用时与异步任务CPU用时比例，
+                 * 来决定执行多长时间的异步任务
+                 */
+
                 boolean ranTasks;
                 if (ioRatio == 100) {
                     try {
@@ -763,6 +823,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 
+                //判断是否触发JDK Epoll BUG 触发空轮询
                 if (ranTasks || strategy > 0) {
                     if (selectCnt > MIN_PREMATURE_SELECTOR_RETURNS && logger.isDebugEnabled()) {
                         logger.debug("Selector.select() returned prematurely {} times in a row for Selector {}.",
@@ -770,6 +831,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     }
                     selectCnt = 0;
                 } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
+
+                    //既没有IO就绪事件，也没有异步任务，Reactor线程从Selector上被异常唤醒 触发JDK Epoll空轮训BUG
+                    //重新构建Selector,selectCnt归零
                     selectCnt = 0;
                 }
             } catch (CancelledKeyException e) {
