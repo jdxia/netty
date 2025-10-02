@@ -5,13 +5,16 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.example.demo.handler.server.http.MyHttpServerHandler;
+import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler;
+import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler2;
+import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +54,7 @@ public class NettyServer {
          * [HandlerB] <-> [HandlerContextB]
          * [HandlerC] <-> [HandlerContextC]
          *
-         * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext。ChannelHandlerContext中包装着ChannelHandler
+         * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext, ChannelHandlerContext中包装着ChannelHandler
          *
          * 注意:
          * channel.write(...) 从 Tail 开始走整个出站链，经过所有出站处理器
@@ -112,7 +115,7 @@ public class NettyServer {
 
                     // 参数设置, 设置主Reactor中channel的option选项
                     .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-                    // 设置服务端ServerSocketChannel中的SocketOption
+                    // 设置服务端ServerSocketChannel中的SocketOption, 可连接队列的大小
                     .option(ChannelOption.SO_BACKLOG, 1024)
 
                     /**
@@ -158,18 +161,29 @@ public class NettyServer {
                              * inbound事件从HeadContext开始逐个向后传播直到TailContext。
                              * outbound事件则是反向传播，从TailContext开始反向向前传播直到HeadContext。
                              *
-                             * inbound事件只能被pipeline中的ChannelInboundHandler响应处理outbound事件只能被pipeline中的ChannelOutboundHandler响应处理
+                             * inbound事件只能被pipeline中的ChannelInboundHandler响应处理
+                             * outbound事件只能被pipeline中的ChannelOutboundHandler响应处理
+                             *
+                             * ChannelInboundHandlerAdapter 入站的
+                             * ChannelOutboundHandlerAdapter 出站的
+                             * ChannelDuplexHandler  入站和出站的
                              */
 
+                            System.out.println("客户的socketChannel hashCode=" + ch.hashCode());
 
                             // 向pipeline中添加自定义业务处理handler, 添加的数量不受限制
-                            ch.pipeline().addLast(new LoggingHandler(LogLevel.TRACE));
+                            ch.pipeline().addLast("logHandler", new LoggingHandler(LogLevel.TRACE));
 
-                            ch.pipeline().addLast(new NettyServerHandler());
+                            // 测试普通的 channelHandler
+//                            testServerHandler(ch);
+
+                            // 测试http Handler
+                            testHttpHandler(ch);
                         }
                     });
 
             // 启动服务端并绑定端口
+
             int port = 9999;
             // 这里 有 注册ServerSocketChannel到main reactor上
             ChannelFuture future = serverBootstrap.bind("0.0.0.0", port);
@@ -201,6 +215,19 @@ public class NettyServer {
             workerGroup.shutdownGracefully();
         }
 
+    }
+
+    private static void testHttpHandler(NioSocketChannel ch) {
+        // netty提供的http的编解码器
+        ch.pipeline().addLast("httpCodec", new HttpServerCodec());
+
+        // http自定义处理器
+        ch.pipeline().addLast("httpHandler", new MyHttpServerHandler());
+    }
+
+    private static void testServerHandler(NioSocketChannel ch) {
+        ch.pipeline().addLast("nettyServerHandler", new NettyServerHandler());
+        ch.pipeline().addLast("nettyServerHandler2", new NettyServerHandler2());
     }
 
     private static void printEnv() {

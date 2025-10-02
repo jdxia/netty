@@ -1,16 +1,15 @@
-package io.netty.example.demo;
+package io.netty.example.demo.handler.server.serverHandler;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelPipeline;
+import io.netty.channel.*;
+import io.netty.channel.nio.NioEventLoop;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 
 // 这个类很像 reactor 模式里的processor线程，负责读区请求然后返回响应
 @Slf4j
@@ -49,6 +48,8 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
         Channel channel = ctx.channel();
         // channel 和 pipeLine是互相持有的
         ChannelPipeline pipeline = channel.pipeline();
+        // 检查任务队列里面有没有任务, taskQueue 和 scheduleTaskQueue 里面可以看
+        NioEventLoop eventLoop = (NioEventLoop) channel.eventLoop();
 
         // 第一步，获取客户端请求的内容
         ByteBuf buffer = (ByteBuf) msg;
@@ -69,6 +70,28 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
 
         // 写到缓冲区但是没刷
         ctx.write(responseBuffer);
+
+
+        // 第三步, 自定义异步任务, 提交到 taskQueue
+        ctx.channel().eventLoop().execute(() -> {
+            try {
+                Thread.sleep(3000);
+                System.out.println("=======> async execute taskQueue");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        // 第四步, 自定义定时任务, 提交到 scheduleTaskQueue
+        ctx.channel().eventLoop().schedule(() -> {
+            try {
+                Thread.sleep(3000);
+                System.out.println("=======> async execute scheduleTaskQueue");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, 5, TimeUnit.SECONDS);
+
     }
 
     // 数据读取完毕

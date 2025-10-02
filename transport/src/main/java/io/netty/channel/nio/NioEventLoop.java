@@ -15,13 +15,7 @@
  */
 package io.netty.channel.nio;
 
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelException;
-import io.netty.channel.EventLoop;
-import io.netty.channel.EventLoopException;
-import io.netty.channel.EventLoopTaskQueueFactory;
-import io.netty.channel.SelectStrategy;
-import io.netty.channel.SingleThreadEventLoop;
+import io.netty.channel.*;
 import io.netty.util.IntSupplier;
 import io.netty.util.concurrent.RejectedExecutionHandler;
 import io.netty.util.internal.ObjectUtil;
@@ -743,30 +737,56 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 //轮询结果
                 int strategy;
                 try {
-                    //根据轮询策略获取轮询结果 这里的hasTasks()主要检查的是普通队列和尾部队列中是否有异步任务等待执行
+                    /**
+                     * {@link DefaultSelectStrategy#calculateStrategy(IntSupplier, boolean)}
+                     * 根据轮询策略获取轮询结果 这里的hasTasks()主要检查的是普通队列和尾部队列中是否有异步任务等待执行
+                     * selectSupplier 就是 {@link NioEventLoop#selectNowSupplier} 即 selectNow() - 非阻塞轮询, 立即检查是否有 I/O 事件，不阻塞线程
+                     *
+                     * 1. 有任务待处理 (hasTasks = true)：
+                     *     - 执行 selectSupplier.get() 即 selectNow() - 非阻塞轮询
+                     *     - 立即检查是否有 I/O 事件，不阻塞线程
+                     *   2. 无任务待处理 (hasTasks = false)：
+                     *     - 返回 SelectStrategy.SELECT - 阻塞轮询
+                     *     - 让线程阻塞等待 I/O 事件
+                     *
+                     * 这里需要注意的是netty只会自动注册OP_READ事件，而OP_WRITE事件是在当Socket写入缓冲区以满无法继续写入发送数据时由用户自己注册。
+                     *
+                     * 如果Reactor中有异步任务需要执行，那么Reactor线程需要立即执行，不能阻塞在Selector上。
+                     * 在返回前需要再顺带调用selectNow()非阻塞查看一下当前是否有IO就绪事件发生。如果有，那么正好可以和异步任务一起被处理，如果没有，则及时地处理异步任务。
+                     */
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
-                    case SelectStrategy.CONTINUE:
+                    case SelectStrategy.CONTINUE: // 重新开启一轮IO轮询
                         continue;
 
-                    case SelectStrategy.BUSY_WAIT:
+                    case SelectStrategy.BUSY_WAIT: // Reactor线程进行自旋轮询，由于NIO 不支持自旋操作，所以这里直接跳到SelectStrategy.SELECT策略。
                         // NIO不支持自旋（BUSY_WAIT）
                         // fall-through to SELECT since the busy-wait is not supported with NIO
 
-                    case SelectStrategy.SELECT:
+                    case SelectStrategy.SELECT: // 此时没有任何异步任务需要执行，Reactor线程可以安心的阻塞在Selector上等待IO就绪事件的来临
                         // 核心逻辑是有任务需要执行，则Reactor线程立马执行异步任务，如果没有异步任务执行，则进行轮询IO事件
+
+                        /**
+                         *  获取下一个定时任务的截止时间
+                         */
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
+                            // 没有定时任务，可以无限阻塞
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
+
+                        // 设置预期的唤醒时间
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
+                            // 如果没有立即要执行的任务，才进行 select 阻塞
                             if (!hasTasks()) {
+                                // 根据 deadline 决定阻塞时间
                                 strategy = select(curDeadlineNanos);
                             }
                         } finally {
                             // This update is just to help block unnecessary selector wakeups
                             // so use of lazySet is ok (no race condition)
+                            // 标记 EventLoop 为活跃状态
                             nextWakeupNanos.lazySet(AWAKE);
                         }
                         // fall through

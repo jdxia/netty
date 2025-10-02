@@ -155,6 +155,7 @@ public abstract class SingleThreadEventLoop extends SingleThreadEventExecutor im
 
     @Override
     protected boolean hasTasks() {
+        // 判断依据就是查看Reactor中的异步任务队列taskQueue和用于统计信息任务用的尾部队列tailTask是否有异步任务。
         return super.hasTasks() || !tailTasks.isEmpty();
     }
 
