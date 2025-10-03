@@ -6,11 +6,15 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.example.demo.handler.server.http.MyHttpServerHandler;
+import io.netty.example.demo.handler.server.im.GroupChatServerHandler;
 import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler;
 import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler2;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.NettyRuntime;
 import io.netty.util.concurrent.Future;
@@ -18,6 +22,8 @@ import io.netty.util.concurrent.GenericFutureListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
+import java.util.concurrent.TimeUnit;
 
 import static jdk.nashorn.internal.objects.NativeFunction.bind;
 
@@ -174,11 +180,26 @@ public class NettyServer {
                             // 向pipeline中添加自定义业务处理handler, 添加的数量不受限制
                             ch.pipeline().addLast("logHandler", new LoggingHandler(LogLevel.TRACE));
 
+                            /**
+                             * 说明 : netty 提供的处理空闲状态的
+                             * 1. readerIdleTime: 读空闲, 表示多长时间没有读, 就会发送一个心跳检测包检测是否连接
+                             * 2. writerIdleTime: 写空闲,表示多长时间没有写, 就会发送一个心跳检测包是否连接
+                             * 3. allIdleTime: 读写空闲,表示多长时间没有读写, 就会发送一个心跳检测包检测是否连接
+                             * 如果你把某个时间设为 0，就表示禁用该方向的空闲检测（即不监测读空闲 / 写空闲 / 全空闲）
+                             *
+                             * 当某个空闲状态被触发时，IdleStateHandler 会在 pipeline 中 触发一个特殊事件 —— IdleStateEvent，
+                             *  通过 ctx.fireUserEventTriggered(...) 通知下游 handler。下游的 handler 可以重写 userEventTriggered(...) 来捕获这个事件并做处理
+                             */
+                            ch.pipeline().addLast("idleState", new IdleStateHandler(3, 5, 7, TimeUnit.SECONDS));
+
                             // 测试普通的 channelHandler
 //                            testServerHandler(ch);
 
                             // 测试http Handler
-                            testHttpHandler(ch);
+//                            testHttpHandler(ch);
+
+                            // 测试im handler
+                            testImHandler(ch);
                         }
                     });
 
@@ -215,6 +236,14 @@ public class NettyServer {
             workerGroup.shutdownGracefully();
         }
 
+    }
+
+    private static void testImHandler(NioSocketChannel ch) {
+        ch.pipeline().addLast("decoder", new StringDecoder());
+        ch.pipeline().addLast("encoder", new StringEncoder());
+
+        // 加入自己业务处理Handler
+        ch.pipeline().addLast("groupChatServerHandler", new GroupChatServerHandler());
     }
 
     private static void testHttpHandler(NioSocketChannel ch) {
