@@ -24,6 +24,13 @@ import io.netty.util.IntSupplier;
  * operation can be delayed or skipped entirely if there are events to process immediately.
  */
 public interface SelectStrategy {
+    /**
+     * 默认可以看 {@link DefaultSelectStrategy}
+     * Netty中定义的这三种轮询策略：
+     * SelectStrategy.SELECT：此时没有任何异步任务需要执行，Reactor线程可以安心的阻塞在Selector上等待IO就绪事件的来临。
+     * SelectStrategy.CONTINUE：重新开启一轮IO轮询。
+     * SelectStrategy.BUSY_WAIT： Reactor线程进行自旋轮询，由于NIO 不支持自旋操作，所以这里直接跳到SelectStrategy.SELECT策略。
+     */
 
     /**
      * Indicates a blocking select should follow.

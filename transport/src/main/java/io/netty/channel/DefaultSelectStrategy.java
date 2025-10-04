@@ -28,7 +28,7 @@ final class DefaultSelectStrategy implements SelectStrategy {
     /**
      * Reactor线程要保证及时的执行异步任务
      * 1：如果有异步任务等待执行，则马上执行selectNow()非阻塞轮询一次IO就绪事件
-     * 2：没有异步任务，则跳到switch select分支
+     * 2：没有异步任务，则跳到switch select分支, 返回 SelectStrategy.SELECT
      */
     @Override
     public int calculateStrategy(IntSupplier selectSupplier, boolean hasTasks) throws Exception {

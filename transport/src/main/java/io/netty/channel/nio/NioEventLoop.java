@@ -65,6 +65,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private final IntSupplier selectNowSupplier = new IntSupplier() {
         @Override
         public int get() throws Exception {
+            //非阻塞, 选择操作更新了其就绪操作集的键数（可能为零）
             return selectNow();
         }
     };
@@ -724,6 +725,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * 2. 如果没有IO事件   → 不会阻塞，马上执行异步任务
      * 3. 定时任务会在Selector上注册deadline，或等待其他就绪事件
      *
+     * Netty框架中的异步任务分为三类：
+     * 存放在普通任务队列taskQueue中的普通异步任务。
+     * 存放在尾部队列tailTasks中的用于执行统计任务等收尾动作的尾部任务。
+     * 还有一种就是这里即将提到的定时任务。存放在Reactor中的定时任务队列scheduledTaskQueue中。
+     *
      */
     @Override
     protected void run() {
@@ -753,6 +759,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                      *
                      * 如果Reactor中有异步任务需要执行，那么Reactor线程需要立即执行，不能阻塞在Selector上。
                      * 在返回前需要再顺带调用selectNow()非阻塞查看一下当前是否有IO就绪事件发生。如果有，那么正好可以和异步任务一起被处理，如果没有，则及时地处理异步任务。
+                     *
+                     * 这里Netty要表达的语义是：
+                     * 首先Reactor线程需要优先保证IO就绪事件的处理，然后在保证异步任务的及时执行。
+                     * 如果当前没有IO就绪事件但是有异步任务需要执行时，Reactor线程就要去及时执行异步任务而不是继续阻塞在Selector上等待IO就绪事件。
                      */
                     strategy = selectStrategy.calculateStrategy(selectNowSupplier, hasTasks());
                     switch (strategy) {
@@ -768,6 +778,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
                         /**
                          *  获取下一个定时任务的截止时间
+                         *  从定时任务队列中取出即将快要执行的定时任务deadline
                          */
                         long curDeadlineNanos = nextScheduledTaskDeadlineNanos();
                         if (curDeadlineNanos == -1L) {
@@ -775,18 +786,30 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                             curDeadlineNanos = NONE; // nothing on the calendar
                         }
 
-                        // 设置预期的唤醒时间
+                        /**
+                         * 设置预期的唤醒时间
+                         * 最早执行定时任务的deadline作为 select的阻塞时间，意思是到了定时任务的执行时间
+                         * 不管有无IO就绪事件，必须唤醒selector，从而使reactor线程执行定时任务
+                         */
                         nextWakeupNanos.set(curDeadlineNanos);
                         try {
                             // 如果没有立即要执行的任务，才进行 select 阻塞
                             if (!hasTasks()) {
-                                // 根据 deadline 决定阻塞时间
+                                /**
+                                 * 根据 deadline 决定阻塞时间
+                                 * 再次检查普通任务队列中是否有异步任务
+                                 * 没有的话开始select阻塞轮询IO就绪事件
+                                 */
                                 strategy = select(curDeadlineNanos);
                             }
                         } finally {
                             // This update is just to help block unnecessary selector wakeups
                             // so use of lazySet is ok (no race condition)
-                            // 标记 EventLoop 为活跃状态
+                            /**
+                             * 执行到这里说明Reactor已经从Selector上被唤醒了
+                             * 设置Reactor的状态为苏醒状态AWAKE
+                             * lazySet优化不必要的volatile操作，不使用内存屏障，不保证写操作的可见性（单线程不需要保证）
+                             */
                             nextWakeupNanos.lazySet(AWAKE);
                         }
                         // fall through
