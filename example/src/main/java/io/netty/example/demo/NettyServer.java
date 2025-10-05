@@ -39,6 +39,8 @@ public class NettyServer {
          * 服务器监听一个端口会出现serverSocketChanel , 然后有网络连接后会是socketChannel, 后续就是通过这个socketChannel和客户端通信,
          * SelectionKey 类似 某个 channel 在 selector 上的注册结果, 类似 epoll_event
          *
+         * SelectionKey就相当于是Channel在Selector中的一种表示，当Channel上有IO就绪事件时，Selector会将Channel对应的SelectionKey返回给Reactor线程，我们可以通过返回的这个SelectionKey里的attachment属性获取到对应的Netty自定义Channel
+         *
          * netty对jdk原生的selector做了优化,把JDK基于 HashSet 的 selectedKeys/publicSelectedKeys 改造成 Netty 自己的“数组实现”SelectedSelectionKeySet，
          * 并用一个包装 Selector（SelectedSelectionKeySetSelector）在每次 select 前“重置”该数组。这样可以显著降低遍历和插入的开销、减少 GC，而且还配合了对 JDK epoll 100% CPU bug 的重建 Selector 方案与“少唤醒/少阻塞”的 select 策略，整体提升吞吐与稳定性。
          *

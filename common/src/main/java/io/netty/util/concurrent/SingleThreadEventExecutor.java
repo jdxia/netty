@@ -89,6 +89,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
     private final CountDownLatch threadLock = new CountDownLatch(1);
     private final Set<Runnable> shutdownHooks = new LinkedHashSet<Runnable>();
+
+    /**
+     * addTaskWakesUp = true 表示 当且仅当只有调用addTask方法时 才会唤醒Reactor线程
+     * addTaskWakesUp = false 表示 并不是只有addTask方法才能唤醒Reactor 还有其他方法可以唤醒Reactor 默认设置false
+     */
     private final boolean addTaskWakesUp;
     private final int maxPendingTasks;
     private final RejectedExecutionHandler rejectedExecutionHandler;
@@ -875,7 +880,19 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
             }
         }
 
+        /**
+         * immediate：表示提交的task是否需要被立即执行。Netty中只要你提交的任务类型不是LazyRunnable类型的任务，都是需要立即执行的。immediate = true
+         *
+         * addTaskWakesUp : true 表示当且仅当只有调用addTask方法时才会唤醒Reactor线程。
+         * 调用别的方法并不会唤醒Reactor线程。
+         * 在初始化NioEventLoop时会设置为false，表示并不是只有addTask方法才能唤醒Reactor线程 还有其他方法可以唤醒Reactor线程，比如这里的execute方法就会唤醒Reactor线程。
+         *
+         * 针对execute方法中的这个唤醒条件!addTaskWakesUp && immediate，netty这里要表达的语义是：当immediate参数为true的时候表示该异步任务需要立即执行
+         */
         if (!addTaskWakesUp && immediate) {
+            /**
+             * 往下 {@link io.netty.channel.nio.NioEventLoop#wakeup(boolean)}
+             */
             wakeup(inEventLoop);
         }
     }

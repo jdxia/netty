@@ -54,6 +54,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
     private final SelectableChannel ch;
     // Channel监听事件集合 这里是SelectionKey.OP_ACCEPT事件
     protected final int readInterestOp;
+
+    //channel注册到Selector后获得的SelectKey
     volatile SelectionKey selectionKey;
     boolean readPending;
     private final Runnable clearReadPendingRunnable = new Runnable() {
@@ -446,16 +448,27 @@ public abstract class AbstractNioChannel extends AbstractChannel {
         final int interestOps = selectionKey.interestOps();
 
         /**
+         * Netty中将各种事件的集合用一个int型变量来保存。
+         *
+         * 用&操作判断，某个事件是否在事件集合中：(readyOps & SelectionKey.OP_CONNECT) != 0，这里就是判断Channel是否对Connect事件感兴趣。
+         *
+         * 用|操作向事件集合中添加事件：interestOps | readInterestOp
+         *
+         * 从事件集合中删除某个事件，是通过先将要删除事件取反~，然后在和事件集合做&操作：ops &= ~SelectionKey.OP_CONNECT
+         */
+
+        /**
          * 从SelectionKey中获取NioServerSocketChannel感兴趣的IO事件集合 interestOps，当时在注册的时候interestOps设置为0
          *
-         * ServerSocketChannel 初始化时 readInterestOp设置的是OP_ACCEPT事件
+         * 1：ServerSocketChannel 初始化时 readInterestOp设置的是OP_ACCEPT事件
+         * 2：SocketChannel 初始化时 readInterestOp设置的是OP_READ事件
          */
         if ((interestOps & readInterestOp) == 0) {
             /**
              * 将在NioServerSocketChannel初始化时设置的readInterestOp = OP_ACCEPT，
              * 设置到SelectionKey中的interestOps集合中。这样Reactor中的Selector就开始监听interestOps集合中包含的IO事件了
              *
-             * 添加OP_ACCEPT事件到interestOps集合中
+             * 注册监听OP_ACCEPT或者OP_READ事件
              */
             selectionKey.interestOps(interestOps | readInterestOp);
         }

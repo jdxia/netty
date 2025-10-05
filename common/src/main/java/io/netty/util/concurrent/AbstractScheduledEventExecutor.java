@@ -36,6 +36,7 @@ public abstract class AbstractScheduledEventExecutor extends AbstractEventExecut
                 }
             };
 
+    //启动时间点
     private static final long START_TIME = System.nanoTime();
 
     static final Runnable WAKEUP_TASK = new Runnable() {

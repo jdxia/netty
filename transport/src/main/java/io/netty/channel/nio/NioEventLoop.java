@@ -18,6 +18,7 @@ package io.netty.channel.nio;
 import io.netty.channel.*;
 import io.netty.util.IntSupplier;
 import io.netty.util.concurrent.RejectedExecutionHandler;
+import io.netty.util.concurrent.SingleThreadEventExecutor;
 import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.ReflectionUtil;
@@ -117,6 +118,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     /**
      * 会通过反射替换selector对象中的selectedKeySet保存就绪的selectKey
      * 该字段为持有selector对象selectedKeys的引用，当IO事件就绪时，直接从这里获取
+     *
+     * 在优化开关开启的情况下，Netty会将创建的SelectedSelectionKeySet 集合保存在NioEventLoop的private SelectedSelectionKeySet selectedKeys字段中，方便Reactor线程直接从这里获取IO就绪的SelectionKey。
+     *
+     * 在优化开关关闭的情况下，Netty会直接采用JDK NIO Selector的默认实现。此时NioEventLoop的selectedKeys字段就会为null。
      */
     private SelectedSelectionKeySet selectedKeys;
 
@@ -137,6 +142,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     private volatile int ioRatio = 50;
     private int cancelledKeys;
+
+    //用于及时从selectedKeys中清除失效的selectKey 比如 socketChannel从selector上被用户移除
     private boolean needsToSelectAgain;
 
     /**
@@ -424,6 +431,20 @@ public final class NioEventLoop extends SingleThreadEventLoop {
          * 将与sun.nio.ch.SelectorImpl类中selectedKeys和publicSelectedKeys关联好的Netty优化实现SelectedSelectionKeySet，
          * 设置到io.netty.channel.nio.NioEventLoop#selectedKeys字段中保存
          * 后续Reactor线程就会直接从io.netty.channel.nio.NioEventLoop#selectedKeys中获取IO就绪的SocketChannel
+         *
+         * jdk17 要开各种模块封装权限 --add-opens=java.base/sun.nio.ch=ALL-UNNAMED , arthas 判断有没有替换成功
+         * # 类是否已加载, sc 只是看“是否加载”，不代表一定在用
+         * sc -d io.netty.channel.nio.SelectedSelectionKeySetSelector
+         *
+         * # 直接找堆中的实例（有实例基本就代表替换成功）, vmtool getInstances 若能看到实例，基本可判定注入成功（因为该 wrapper 只在成功路径被 new）
+         * vmtool --action getInstances --className io.netty.channel.nio.SelectedSelectionKeySetSelector --limit 20
+         *
+         * # 取第一个实例，打印 selector 的实际类型（应为 io.netty.channel.nio.SelectedSelectionKeySetSelector ）
+         * vmtool --action getInstances --className io.netty.channel.nio.NioEventLoop --limit 1 --express 'instances[0].selector.getClass().getName()'
+         *
+         * # 再看 selectedKeys 字段是否已被填充（成功应为 true）
+         * vmtool --action getInstances --className io.netty.channel.nio.NioEventLoop --limit 1 --express 'instances[0].selectedKeys != null'
+         *
          */
         selectedKeys = selectedKeySet;
         logger.trace("instrumented a special java.util.Set into: {}", unwrappedSelector);
@@ -740,7 +761,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         int selectCnt = 0;
         for (;;) {
             try {
-                //轮询结果
+                /**
+                 * 轮询结果
+                 * 表示IO就绪的Channel个数
+                 * {@link io.netty.channel.nio.NioEventLoop#select} 方法的返回值
+                 */
                 int strategy;
                 try {
                     /**
@@ -799,6 +824,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                                  * 根据 deadline 决定阻塞时间
                                  * 再次检查普通任务队列中是否有异步任务
                                  * 没有的话开始select阻塞轮询IO就绪事件
+                                 *
+                                 * 那么问题来了，此时Reactor线程正阻塞在selector.select()调用上等待IO就绪事件的到来，
+                                 * 如果此时正好有异步任务被提交到Reactor中需要执行，并且此时无任何IO就绪事件，而Reactor线程由于没有IO就绪事件到来，会继续在这里阻塞，那么如何去执行异步任务呢？？
+                                 *
+                                 * 看任务提交那块 {@link SingleThreadEventExecutor#execute(Runnable, boolean)}
+                                 * 既然异步任务在被提交后希望立马得到执行，那么就在提交异步任务的时候去唤醒Reactor线程
                                  */
                                 strategy = select(curDeadlineNanos);
                             }
@@ -844,25 +875,42 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                  */
 
                 boolean ranTasks;
+                /**
+                 * 无论什么时候，当有IO就绪事件到来时，Reactor都需要保证IO事件被及时完整的处理完，
+                 * 而ioRatio主要限制的是执行异步任务所需用时，防止Reactor线程处理异步任务时间过长而导致I/O 事件得不到及时地处理。
+                 *
+                 * ioRatio == 100代表 异步任务执行时间无限制, < 100 根据公式算出需要执行异步任务的超时时间
+                 * 如果 < 100 或者 50 , 没有io事件活跃只有异步任务, 那么只会执行64个异步任务
+                 */
                 if (ioRatio == 100) {
+                    /**
+                     * 当ioRatio = 100时，表示无需考虑执行时间的限制，
+                     * 当有IO就绪事件时（strategy > 0）Reactor线程需要优先处理IO就绪事件，
+                     * 处理完IO事件后，执行所有的异步任务包括：普通任务，尾部任务，定时任务。无时间限制。
+                     */
+
                     try {
                         if (strategy > 0) {
+                            //如果有IO就绪事件 则处理IO就绪事件
                             processSelectedKeys();
                         }
                     } finally {
                         // Ensure we always run tasks.
+                        //处理所有异步任务
                         ranTasks = runAllTasks();
                     }
-                } else if (strategy > 0) {
+                } else if (strategy > 0) { //先执行IO事件 用时ioTime  执行异步任务只能用时ioTime * (100 - ioRatio) / ioRatio
                     final long ioStartTime = System.nanoTime();
                     try {
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
                         final long ioTime = System.nanoTime() - ioStartTime;
+
+                        // 限定在超时时间内 处理有限的异步任务 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
-                } else {
+                } else { //没有IO就绪事件处理，则只执行异步任务 最多执行64个 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
                     ranTasks = runAllTasks(0); // This will run the minimum number of tasks
                 }
 
@@ -947,9 +995,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKeys() {
+        //是否采用netty优化后的selectedKey集合类型 是由变量DISABLE_KEY_SET_OPTIMIZATION决定的 默认为false
         if (selectedKeys != null) {
+            // 走这里
             processSelectedKeysOptimized();
         } else {
+            // 主要逻辑先看这里
+            // 调用selector.selectedKeys()去获取所有IO就绪的SelectionKeys
             processSelectedKeysPlain(selector.selectedKeys());
         }
     }
@@ -981,12 +1033,41 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         Iterator<SelectionKey> i = selectedKeys.iterator();
+        // 通过获取HashSet的迭代器，开始逐个处理IO就绪的Channel
         for (;;) {
+            /**
+             * SelectionKey就相当于是Channel在Selector中的一种表示，
+             * 当Channel上有IO就绪事件时，Selector会将Channel对应的SelectionKey返回给Reactor线程，
+             * 我们可以通过返回的这个SelectionKey里的attachment属性获取到对应的Netty自定义Channel
+             */
             final SelectionKey k = i.next();
+
+            /**
+             * 这个SelectionKey中的attachment属性里存放的是什么？
+             *
+             * NioServerSocketChannel向Main Reactor注册的时候，通过this指针将自己作为SelectionKey的attachment属性注册到Selector中。
+             * 这一步完成了Netty自定义Channel和JDK NIO Channel的绑定。
+             *
+             * 另一种就是NioTask，这种类型是Netty提供给用户可以自定义一些当Channel上发生IO就绪事件时的自定义处理
+             */
             final Object a = k.attachment();
+            /**
+             * 注意每次迭代末尾的keyIterator.remove()调用。Selector不会自己从已选择键集中移除SelectionKey实例。
+             * 必须在处理完通道时自己移除。下次该通道变成就绪时，Selector会再次将其放入已选择键集中。
+             */
             i.remove();
 
+            /**
+             * Netty向SelectionKey中的attachment属性附加的对象分为两种：
+             *
+             * 一种是我们熟悉的Channel，无论是服务端使用的NioServerSocketChannel还是客户端使用的NioSocketChannel都属于AbstractNioChannel。Channel上的IO事件是由Netty框架负责处理，也是本小节我们要重点介绍的
+             *
+             * 另一种就是NioTask，这种类型是Netty提供给用户可以自定义一些当Channel上发生IO就绪事件时的自定义处理。
+             *
+             * NioTask和Channel其实本质上是一样的都是负责处理Channel上的IO就绪事件，只不过一个是用户自定义处理，一个是Netty框架处理
+             */
             if (a instanceof AbstractNioChannel) {
+
                 processSelectedKey(k, (AbstractNioChannel) a);
             } else {
                 @SuppressWarnings("unchecked")
@@ -998,6 +1079,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 break;
             }
 
+            //目的是再次进入for循环 移除失效的selectKey(socketChannel可能从selector上移除)
             if (needsToSelectAgain) {
                 selectAgain();
                 selectedKeys = selector.selectedKeys();
@@ -1029,6 +1111,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 processSelectedKey(k, task);
             }
 
+            //目的是再次进入for循环 移除失效的selectKey(socketChannel可能被用户从selector上移除)
             if (needsToSelectAgain) {
                 // null out entries in the array to allow to have it GC'ed once the Channel close
                 // See https://github.com/netty/netty/issues/2363
@@ -1041,8 +1124,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
+        //获取Channel的底层操作类Unsafe
         final AbstractNioChannel.NioUnsafe unsafe = ch.unsafe();
         if (!k.isValid()) {
+            // 如果SelectionKey已经失效则关闭对应的Channel.
             final EventLoop eventLoop;
             try {
                 eventLoop = ch.eventLoop();
@@ -1064,20 +1149,36 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
 
         try {
+            //获取IO就绪事件
             int readyOps = k.readyOps();
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.
+            //处理Connect事件
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
                 int ops = k.interestOps();
+                //移除对Connect事件的监听，否则Selector会一直通知
                 ops &= ~SelectionKey.OP_CONNECT;
                 k.interestOps(ops);
 
+                /**
+                 * 触发channelActive事件处理Connect事件
+                 *
+                 * 如果IO就绪的事件是Connect事件，那么就调用对应客户端NioSocketChannel中的Unsafe操作类中的finishConnect方法处理Connect事件。
+                 * 这时会在Netty客户端NioSocketChannel中的pipeline中传播ChannelActive事件
+                 */
                 unsafe.finishConnect();
             }
 
             // Process OP_WRITE first as we may be able to write some queued buffers and so free memory.
+            /**
+             * 处理Write事件
+             *
+             * OP_WRITE事件的注册是由用户来完成的，
+             * 当Socket发送缓冲区已满无法继续写入数据时，用户会向Reactor注册OP_WRITE事件，
+             * 等到Socket发送缓冲区变得可写时，Reactor会收到OP_WRITE事件活跃通知，随后在这里调用客户端NioSocketChannel中的forceFlush方法将剩余数据发送出去
+             */
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
                unsafe.forceFlush();
@@ -1085,6 +1186,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
             // Also check for readOps of 0 to workaround possible JDK bug which may otherwise lead
             // to a spin loop
+            /**
+             * 处理Read事件或者Accept事件
+             *
+             * Netty中处理Read事件和Accept事件都是由对应Channel中的Unsafe操作类中的read方法处理
+             * 服务端NioServerSocketChannel中的Read方法处理的是Accept事件，客户端NioSocketChannel中的Read方法处理的是Read事件
+             */
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                 unsafe.read();
             }
@@ -1150,6 +1257,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
     @Override
     protected void wakeup(boolean inEventLoop) {
+        /**
+         * 当nextWakeupNanos = AWAKE时表示当前Reactor正处于苏醒状态，
+         * 既然是苏醒状态也就没有必要去执行selector.wakeup()重复唤醒Reactor了，同时也能省去这一次的系统调用开销。
+         *
+         * 参考 这个类里面的 finally代码块的 nextWakeupNanos.lazySet(AWAKE);
+         */
         if (!inEventLoop && nextWakeupNanos.getAndSet(AWAKE) != AWAKE) {
             selector.wakeup();
         }
@@ -1175,10 +1288,27 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         return selector.selectNow();
     }
 
+    // 这里的deadlineNanos表示的就是Reactor中最近的一个定时任务执行时间点deadline，单位是纳秒。指的是一个绝对时间
     private int select(long deadlineNanos) throws IOException {
+        // NONE表示当前Reactor中并没有定时任务，所以可以安心的阻塞在Selector上等待IO就绪事件到来
         if (deadlineNanos == NONE) {
+            /**
+             * 无定时任务，无普通任务执行时，开始轮询IO就绪事件，没有就一直阻塞 直到唤醒条件成立
+             */
             return selector.select();
         }
+
+        /**
+         * 当deadlineNanos不为NONE，表示此时Reactor有定时任务需要执行，
+         * Reactor线程需要阻塞在Selector上等待IO就绪事件直到最近的一个定时任务执行时间点deadline到达。
+         *
+         * 为什么要给deadlineNanos在加上0.995毫秒呢？？
+         * 当最近的一个定时任务的deadline即将在5微秒内到达，那么这时将纳秒转换成毫秒计算出的timeoutMillis会是0。
+         * 而在Netty中timeoutMillis = 0要表达的语义是：定时任务执行时间已经到达deadline时间点，需要被执行。
+         * 而现实情况是定时任务还有5微秒才能够到达deadline，所以对于这种情况，需要在deadlineNanos在加上0.995毫秒凑成1毫秒不能让其为0
+         *
+         * Reactor在有定时任务的情况下，至少要阻塞1毫秒
+         */
         // Timeout will only be 0 if deadline is within 5 microsecs
         long timeoutMillis = deadlineToDelayNanos(deadlineNanos + 995000L) / 1000000L;
         return timeoutMillis <= 0 ? selector.selectNow() : selector.select(timeoutMillis);
