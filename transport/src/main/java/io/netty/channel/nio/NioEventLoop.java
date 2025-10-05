@@ -141,6 +141,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private final SelectStrategy selectStrategy;
 
     private volatile int ioRatio = 50;
+
+    //记录Selector上移除socketChannel的个数 达到256个 则需要将无效的selectKey从SelectedKeys集合中清除掉
     private int cancelledKeys;
 
     //用于及时从selectedKeys中清除失效的selectKey 比如 socketChannel从selector上被用户移除
@@ -858,7 +860,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // 执行到这里说明满足了唤醒条件，Reactor线程从selector上被唤醒开始处理IO就绪事件和执行异步任务
 
                 /**
-                 * Reactor线程需要保证及时的执行异步任务，只要有异步任务提交，就需要退出轮询。
+                 * Reactor线程需要保证及时的执行异步任务，只要有异步任务提交，就需要退出轮询
                  * 有IO事件就优先处理IO事件，然后处理异步任务
                  */
 
@@ -896,7 +898,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         }
                     } finally {
                         // Ensure we always run tasks.
-                        //处理所有异步任务
+                        //处理所有异步任务, 没有时间的限制
                         ranTasks = runAllTasks();
                     }
                 } else if (strategy > 0) { //先执行IO事件 用时ioTime  执行异步任务只能用时ioTime * (100 - ioRatio) / ioRatio
@@ -923,8 +925,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     selectCnt = 0;
                 } else if (unexpectedSelectorWakeup(selectCnt)) { // Unexpected wakeup (unusual case)
 
-                    //既没有IO就绪事件，也没有异步任务，Reactor线程从Selector上被异常唤醒 触发JDK Epoll空轮训BUG
-                    //重新构建Selector,selectCnt归零
+                    /**
+                     * 既没有IO就绪事件，也没有异步任务，Reactor线程从Selector上被异常唤醒 触发JDK Epoll空轮训BUG
+                     * 重新构建Selector,selectCnt归零
+                     */
                     selectCnt = 0;
                 }
             } catch (CancelledKeyException e) {
@@ -970,12 +974,25 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             }
             return true;
         }
+
+        /**
+         * 走到这里的条件是 既没有IO就绪事件，也没有异步任务，Reactor线程从Selector上被异常唤醒
+         * 这种情况可能是已经触发了JDK Epoll的空轮询BUG，如果这种情况持续512次 则认为可能已经触发BUG，于是重建Selector
+         *
+         * 这种意外唤醒的次数selectCnt超过了配置的次数SELECTOR_AUTO_REBUILD_THRESHOLD,那么Netty就会认定这种情况可能已经触发了JDK NIO Epoll空轮询BUG
+         * SELECTOR_AUTO_REBUILD_THRESHOLD默认为512，可以通过系统变量-D io.netty.selectorAutoRebuildThreshold指定自定义数值
+         */
         if (SELECTOR_AUTO_REBUILD_THRESHOLD > 0 &&
                 selectCnt >= SELECTOR_AUTO_REBUILD_THRESHOLD) {
             // The selector returned prematurely many times in a row.
             // Rebuild the selector to work around the problem.
             logger.warn("Selector.select() returned prematurely {} times in a row; rebuilding Selector {}.",
                     selectCnt, selector);
+
+            /**
+             * 重建Selector
+             * 将之前注册的所有Channel重新注册到新的Selector上并关闭旧的Selector
+             */
             rebuildSelector();
             return true;
         }
@@ -1015,11 +1032,27 @@ public final class NioEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    /**
+     * 将socketChannel从selector中移除 取消监听IO事件
+     */
     void cancel(SelectionKey key) {
+        // 调用JDK NIO SelectionKey的API cancel方法，将Channel从Selector中取消掉
         key.cancel();
+
         cancelledKeys ++;
+
+        /**
+         * 当从selector中移除的socketChannel数量达到256个，设置needsToSelectAgain为true
+         * 在io.netty.channel.nio.NioEventLoop.processSelectedKeysPlain 中重新做一次轮询，将失效的selectKey移除，
+         * 以保证selectKeySet的有效性
+         */
         if (cancelledKeys >= CLEANUP_INTERVAL) {
             cancelledKeys = 0;
+
+            /**
+             * 随后在Selector的 下一次轮询过程中，会将cancelledKeys集合中的SelectionKey从Selector中所有的KeySet中移除。
+             * 这里的KeySet包括Selector用于存放就绪SelectionKey的selectedKeys集合，以及用于存放所有注册的Channel对应的SelectionKey的keys集合
+             */
             needsToSelectAgain = true;
         }
     }
@@ -1079,8 +1112,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 break;
             }
 
-            //目的是再次进入for循环 移除失效的selectKey(socketChannel可能从selector上移除)
+            /**
+             * 目的是再次进入for循环 移除失效的selectKey(socketChannel可能从selector上移除)
+             *
+             * 这个 needsToSelectAgain 可以看 {@link AbstractNioChannel#doDeregister()}
+             */
             if (needsToSelectAgain) {
+
+                // 目的是清除无效的SelectionKey, 往下
                 selectAgain();
                 selectedKeys = selector.selectedKeys();
 
@@ -1095,8 +1134,27 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     }
 
     private void processSelectedKeysOptimized() {
+        /**
+         * 在openSelector的时候将JDK中selector实现类中得selectedKeys和publicSelectKeys字段类型
+         * 由原来的HashSet类型替换为 Netty优化后的数组实现的SelectedSelectionKeySet类型
+         *
+         * JDK NIO 原生 Selector存放IO就绪的SelectionKey的集合为HashSet类型的selectedKeys。
+         * 而Netty为了优化对selectedKeys 集合的遍历效率采用了自己实现的SelectedSelectionKeySet类型，从而用对数组的遍历代替用HashSet的迭代器遍历
+         */
         for (int i = 0; i < selectedKeys.size; ++i) {
             final SelectionKey k = selectedKeys.keys[i];
+
+            /**
+             * 对应迭代器中得remove   selector不会自己清除selectedKey
+             *
+             * Selector会在每次轮询到IO就绪事件时，
+             * 将IO就绪的Channel对应的SelectionKey插入到selectedKeys集合，但是Selector只管向selectedKeys集合放入IO就绪的SelectionKey，
+             * 当SelectionKey被处理完毕后，Selector是不会自己主动将其从selectedKeys集合中移除的，典型的管杀不管埋。
+             * 所以需要Netty自己在遍历到IO就绪的 SelectionKey后，将其删除
+             *
+             * 在processSelectedKeysPlain中是直接将其从迭代器中删除。
+             * 在processSelectedKeysOptimized中将其在数组中对应的位置置为Null，方便垃圾回收。
+             */
             // null out entry in the array to allow to have it GC'ed once the Channel close
             // See https://github.com/netty/netty/issues/2363
             selectedKeys.keys[i] = null;
@@ -1111,7 +1169,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 processSelectedKey(k, task);
             }
 
-            //目的是再次进入for循环 移除失效的selectKey(socketChannel可能被用户从selector上移除)
+            /**
+             * 目的是再次进入for循环 移除失效的selectKey(socketChannel可能被用户从selector上移除)
+             *
+             * 在最后清除无效的SelectionKey时，在processSelectedKeysPlain中由于采用的是JDK NIO 原生的Selector，所以只需要执行SelectAgain就可以，Selector会自动清除无效Key。
+             * 但是在processSelectedKeysOptimized中由于是Netty自己实现的优化类型，所以需要Netty自己将SelectedSelectionKeySet数组中的SelectionKey全部清除，最后在执行SelectAgain
+             */
             if (needsToSelectAgain) {
                 // null out entries in the array to allow to have it GC'ed once the Channel close
                 // See https://github.com/netty/netty/issues/2363
@@ -1317,6 +1380,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private void selectAgain() {
         needsToSelectAgain = false;
         try {
+            /**
+             * 目的是清除无效的SelectionKey
+             * 看这个  {@link SelectedSelectionKeySetSelector#selectNow()}
+             */
             selector.selectNow();
         } catch (Throwable t) {
             logger.warn("Failed to update SelectionKeys.", t);

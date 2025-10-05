@@ -45,7 +45,7 @@ public class NettyServer {
          * 并用一个包装 Selector（SelectedSelectionKeySetSelector）在每次 select 前“重置”该数组。这样可以显著降低遍历和插入的开销、减少 GC，而且还配合了对 JDK epoll 100% CPU bug 的重建 Selector 方案与“少唤醒/少阻塞”的 select 策略，整体提升吞吐与稳定性。
          *
          *
-         * JDK的 NIO 默认实现是水平触发，Netty 是边缘触发(默认)和水平触发可切换
+         * JDK的 NIO 默认实现是水平触发，Netty 是边缘触发(默认) 和 水平触发可切换
          * 水平触发 (LT) : 当某个资源（如 socket）就绪后，只要你还没有完全处理完（例如 socket 的缓冲区还有数据没读完），Selector 就会一直返回这个事件, 容错性高
          * 边缘触发 (ET) : 当某个资源（如 socket）就绪后，只要你还没有完全处理完（例如 socket 的缓冲区还有数据没读完），Selector 就不会返回这个事件
          *

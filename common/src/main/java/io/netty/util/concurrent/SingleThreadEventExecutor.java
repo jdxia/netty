@@ -227,6 +227,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         return pollTaskFrom(taskQueue);
     }
 
+    // 从普通任务队列中拉取异步任务
     protected static Runnable pollTaskFrom(Queue<Runnable> taskQueue) {
         for (;;) {
             Runnable task = taskQueue.poll();
@@ -292,17 +293,32 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         }
     }
 
+    /**
+     * 从定时任务队列中取出达到deadline执行时间的定时任务
+     * 将定时任务 转存到 普通任务队列taskQueue中，统一由Reactor线程从taskQueue中取出执行
+     *
+     * 返回值为true时表示到期的定时任务已经全部拉取出来并转存到普通任务队列中。
+     * 返回值为false时表示到期的定时任务只拉取出来一部分，因为这时普通任务队列已经满了，当执行完普通任务时，还需要在进行一次拉取。
+     *
+     * 当到期的定时任务从定时任务队列中拉取完毕或者当普通任务队列已满时，这时就会停止拉取，开始执行普通任务队列中的异步任务
+     */
     private boolean fetchFromScheduledTaskQueue() {
         if (scheduledTaskQueue == null || scheduledTaskQueue.isEmpty()) {
             return true;
         }
+
+        // 获取当前要执行异步任务的时间点nanoTime
         long nanoTime = getCurrentTimeNanos();
         for (;;) {
+            //从定时任务队列中取出到达执行deadline的定时任务  deadline <= nanoTime
             Runnable scheduledTask = pollScheduledTask(nanoTime);
             if (scheduledTask == null) {
                 return true;
             }
+
+            // 将到期的定时任务插入到普通任务队列taskQueue中，如果taskQueue已经没有空间容纳新的任务
             if (!taskQueue.offer(scheduledTask)) {
+                // taskQueue没有空间容纳 则在将定时任务重新塞进定时任务队列中等待下次执行
                 // No space left in the task queue add it back to the scheduledTaskQueue so we pick it up again.
                 scheduledTaskQueue.add((ScheduledFutureTask<?>) scheduledTask);
                 return false;
@@ -387,7 +403,10 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         boolean ranAtLeastOne = false;
 
         do {
+            //将到达执行时间的定时任务转存到普通任务队列taskQueue中，统一由Reactor线程从taskQueue中取出执行
             fetchedAll = fetchFromScheduledTaskQueue();
+
+            // runAllTasksFrom 返回值表示是否执行了至少一个异步任务
             if (runAllTasksFrom(taskQueue)) {
                 ranAtLeastOne = true;
             }
@@ -396,6 +415,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         if (ranAtLeastOne) {
             lastExecutionTime = getCurrentTimeNanos();
         }
+
+        /**
+         * 在Reactor线程执行完定时任务和普通任务后，开始执行存储于尾部任务队列tailTasks中的尾部任务
+         * 执行尾部队列任务
+         */
         afterRunningAllTasks();
         return ranAtLeastOne;
     }
@@ -432,12 +456,17 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
      * @param taskQueue To poll and execute all tasks.
      *
      * @return {@code true} if at least one task was executed.
+     *
+     * 返回值表示是否执行了至少一个异步任务
      */
     protected final boolean runAllTasksFrom(Queue<Runnable> taskQueue) {
+        // 从普通任务队列中拉取异步任务
         Runnable task = pollTaskFrom(taskQueue);
         if (task == null) {
             return false;
         }
+
+        // Reactor线程执行异步任务
         for (;;) {
             safeExecute(task);
             task = pollTaskFrom(taskQueue);
@@ -470,15 +499,21 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
     /**
      * Poll all tasks from the task queue and run them via {@link Runnable#run()} method.  This method stops running
      * the tasks in the task queue and returns if it ran longer than {@code timeoutNanos}.
+     *
+     * 整体逻辑和 {@link SingleThreadEventExecutor#runAllTasks()} 差不多, 但是多了超时时间控制
      */
     protected boolean runAllTasks(long timeoutNanos) {
+        // 从Reactor中的定时任务队列中拉取到期的定时任务，转存到普通任务队列中。当普通任务队列已满或者到期定时任务全部拉取完毕时，停止拉取
         fetchFromScheduledTaskQueue();
+
         Runnable task = pollTask();
         if (task == null) {
+            //普通队列中没有任务时  执行队尾队列的任务
             afterRunningAllTasks();
             return false;
         }
 
+        //异步任务执行超时deadline
         final long deadline = timeoutNanos > 0 ? getCurrentTimeNanos() + timeoutNanos : 0;
         long runTasks = 0;
         long lastExecutionTime;
@@ -489,9 +524,11 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
 
             // Check timeout every 64 tasks because nanoTime() is relatively expensive.
             // XXX: Hard-coded value - will make it configurable if it is really a problem.
+            //每运行64个异步任务 检查一下 是否达到 执行deadline
             if ((runTasks & 0x3F) == 0) {
                 lastExecutionTime = getCurrentTimeNanos();
                 if (lastExecutionTime >= deadline) {
+                    //到达异步任务执行超时deadline，停止执行异步任务
                     break;
                 }
             }

@@ -430,6 +430,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
     @Override
     protected void doDeregister() throws Exception {
+        /**
+         * Channel绑定的Reactor会将其从Selector中取消并停止监听Channel上的IO事件
+         * 往下看下 {@link NioEventLoop#cancel(SelectionKey)}
+         */
         eventLoop().cancel(selectionKey());
     }
 
