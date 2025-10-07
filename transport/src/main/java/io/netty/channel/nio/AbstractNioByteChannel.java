@@ -117,6 +117,8 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
                     byteBuf.release();
                 }
             }
+
+            //根据本次read loop总共读取的字节数，决定下次是否扩容或者缩容
             allocHandle.readComplete();
             pipeline.fireChannelReadComplete();
             pipeline.fireExceptionCaught(cause);
@@ -141,9 +143,13 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
             final ChannelPipeline pipeline = pipeline();
 
             /**
+             * 灵活组合不同的内存分配方式。这也是装饰模式的一种应用
+             * 可以使用内存池的分配方式PooledByteBufAllocator，也可以不使用内存池的分配方式UnpooledByteBufAllocator
+             *
              * PooledByteBufAllocator 具体用于实际分配ByteBuf的分配器
              * 它会根据 AdaptiveRecvByteBufAllocator 动态调整出来的大小去真正的申请内存分配ByteBuffer
              * PooledByteBufAllocator 为Netty中的内存池，用来管理堆外内存DirectByteBuffer
+             * 这个类会使用Netty的内存池为ByteBuffer分配堆外内存
              */
             final ByteBufAllocator allocator = config.getAllocator();
 
@@ -153,6 +159,9 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
              *
              * AdaptiveRecvByteBufAllocator并不会真正的去分配ByteBuffer，它只是负责动态调整分配ByteBuffer的大小
              * 实际 allocHandle 是这个类型 {@link DefaultMaxMessagesRecvByteBufAllocator.MaxMessageHandle}
+             *
+             * AdaptiveRecvByteBufAllocator类只是负责动态调整ByteBuffer的容量， 并不需要关注它们具体的内存分配方式
+             * 而具体为ByteBuffer申请内存空间的是由PooledByteBufAllocator负责
              */
             final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
 
@@ -210,7 +219,10 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 
                 );
 
-                //根据本次read loop总共读取的字节数，决定下次是否扩容或者缩容
+                /**
+                 * 根据本次read loop总共读取的字节数，决定下次是否扩容或者缩容
+                 * {@link AdaptiveRecvByteBufAllocator.HandleImpl#readComplete()}
+                 */
                 allocHandle.readComplete();
 
                 /**

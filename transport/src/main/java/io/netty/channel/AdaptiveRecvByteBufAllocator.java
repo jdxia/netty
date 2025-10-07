@@ -34,27 +34,41 @@ import static java.lang.Math.min;
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
+    // 表示ByteBuffer最小的容量，默认为64，也就是无论ByteBuffer在怎么缩容，容量也不会低于64
     static final int DEFAULT_MINIMUM = 64;
+
     // Use an initial value that is bigger than the common MTU of 1500
+    // 表示ByteBuffer的初始化容量。默认为2048
     static final int DEFAULT_INITIAL = 2048;
+
+    // 表示ByteBuffer的最大容量，默认为65536，也就是无论ByteBuffer在怎么扩容，容量也不会超过65536
     static final int DEFAULT_MAXIMUM = 65536;
 
+    //扩容步长
     private static final int INDEX_INCREMENT = 4;
+
+    //缩容步长
     private static final int INDEX_DECREMENT = 1;
 
+    //RecvBuf分配容量表（扩缩容索引表）按照表中记录的容量大小进行扩缩容
     private static final int[] SIZE_TABLE;
 
     static {
+        //初始化RecvBuf容量分配表
         List<Integer> sizeTable = new ArrayList<Integer>();
+
+        //当分配容量小于512时，扩容单位为16递增
         for (int i = 16; i < 512; i += 16) {
             sizeTable.add(i);
         }
 
         // Suppress a warning since i becomes negative when an integer overflow happens
+        //当分配容量大于512时，扩容单位为一倍
         for (int i = 512; i > 0; i <<= 1) {
             sizeTable.add(i);
         }
 
+        //初始化RecbBuf扩缩容索引表
         SIZE_TABLE = new int[sizeTable.size()];
         for (int i = 0; i < SIZE_TABLE.length; i ++) {
             SIZE_TABLE[i] = sizeTable.get(i);
@@ -76,6 +90,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
                 return high;
             }
 
+            //无符号右移，高位始终补0
             int mid = low + high >>> 1;
             int a = SIZE_TABLE[mid];
             int b = SIZE_TABLE[mid + 1];
@@ -92,12 +107,21 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     }
 
     private final class HandleImpl extends MaxMessageHandle {
+        //最小容量在扩缩容索引表中的index
         private final int minIndex;
+
+        //最大容量在扩缩容索引表中的index
         private final int maxIndex;
         private final int minCapacity;
         private final int maxCapacity;
+
+        //当前容量在扩缩容索引表中的index 初始33 对应容量2048
         private int index;
+
+        //预计下一次分配buffer的容量，初始：2048
         private int nextReceiveBufferSize;
+
+        //是否缩容
         private boolean decreaseNow;
 
         HandleImpl(int minIndex, int maxIndex, int initialIndex, int minCapacity, int maxCapacity) {
@@ -145,6 +169,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
         @Override
         public void readComplete() {
+            //是否对recvbuf进行扩容缩容
             record(totalBytesRead());
         }
     }
@@ -180,6 +205,10 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             throw new IllegalArgumentException("maximum: " + maximum);
         }
 
+        /**
+         * 计算minIndex maxIndex
+         * 在SIZE_TABLE中二分查找最小 >= minimum的容量索引 ：3
+         */
         int minIndex = getSizeTableIndex(minimum);
         if (SIZE_TABLE[minIndex] < minimum) {
             this.minIndex = minIndex + 1;
@@ -187,6 +216,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             this.minIndex = minIndex;
         }
 
+        //在SIZE_TABLE中二分查找最大 <= maximum的容量索引 ：38
         int maxIndex = getSizeTableIndex(maximum);
         if (SIZE_TABLE[maxIndex] > maximum) {
             this.maxIndex = maxIndex - 1;

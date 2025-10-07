@@ -354,6 +354,10 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         javaChannel().close();
     }
 
+    /**
+     * 这里会直接调用底层JDK NIO的SocketChannel#read方法将数据读取到DirectByteBuffer中
+     * 读取数据大小为本次分配的DirectByteBuffer容量，初始为2048
+     */
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();

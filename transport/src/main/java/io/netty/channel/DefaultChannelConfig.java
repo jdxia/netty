@@ -57,6 +57,7 @@ public class DefaultChannelConfig implements ChannelConfig {
 
     protected final Channel channel;
 
+    // PooledByteBufAllocator
     private volatile ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
 
     //用于Channel接收数据用的buffer分配器  类型为AdaptiveRecvByteBufAllocator

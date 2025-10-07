@@ -93,6 +93,12 @@ public final class ByteBufUtil {
             logger.debug("-Dio.netty.allocator.type: pooled (unknown: {})", allocType);
         }
 
+        /**
+         * 在为ByteBuffer分配内存的时候是否使用内存池在Netty中是可以配置的。
+         * 通过系统变量-D io.netty.allocator.type 可以配置是否使用内存池为ByteBuffer分配内存。
+         * 默认情况下是需要使用内存池的。
+         * 但是在安卓系统中默认是不使用内存池的。
+         */
         DEFAULT_ALLOCATOR = alloc;
 
         THREAD_LOCAL_BUFFER_SIZE = SystemPropertyUtil.getInt("io.netty.threadLocalDirectBufferSize", 0);
