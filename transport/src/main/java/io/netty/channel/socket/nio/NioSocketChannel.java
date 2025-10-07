@@ -128,6 +128,10 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
         return (SocketChannel) super.javaChannel();
     }
 
+    /**
+     * 客户端NioSocketChannel判断是否激活的标准为是否处于Connected状态。
+     * 那么显然这里肯定是处于connected状态的。
+     */
     @Override
     public boolean isActive() {
         SocketChannel ch = javaChannel();

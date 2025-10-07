@@ -20,6 +20,7 @@ package io.netty.channel;
  */
 public final class ServerChannelRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
     public ServerChannelRecvByteBufAllocator() {
+        // ignoreBytesRead，用于表示是否忽略网络字节的读取，在创建服务端Channel配置类NioServerSocketChannelConfig的时候，这个字段会被赋值为true
         super(1, true);
     }
 

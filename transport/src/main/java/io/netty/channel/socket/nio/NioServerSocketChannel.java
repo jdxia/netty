@@ -139,6 +139,9 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         return config;
     }
 
+    /**
+     * 服务端NioServerSocketChannel判断是否激活的标准为端口是否绑定成功
+     */
     @Override
     public boolean isActive() {
         // As java.nio.ServerSocketChannel.isBound() will continue to return true even after the channel was closed
@@ -177,12 +180,25 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
         javaChannel().close();
     }
 
+    // 接收客户端连接, 创建客户端NioSocketChannel
     @Override
     protected int doReadMessages(List<Object> buf) throws Exception {
+        /**
+         * 通过javaChannel()获取封装在Netty服务端NioServerSocketChannel中的JDK 原生 ServerSocketChannel
+         *
+         * 通过JDK NIO 原生的ServerSocketChannel的accept方法获取JDK NIO 原生客户端连接SocketChannel
+         *
+         * 内核会基于监听Socket创建出来一个新的Socket专门用于与客户端之间的网络通信这个我们称之为客户端连接Socket。
+         * 这里的ServerSocketChannel就类似于监听Socket。SocketChannel就类似于客户端连接Socket
+         */
         SocketChannel ch = SocketUtils.accept(javaChannel());
 
         try {
             if (ch != null) {
+                /**
+                 * 这里会根据ServerSocketChannel的accept方法获取到JDK NIO 原生的SocketChannel（用于底层真正与客户端通信的Channel），来创建Netty中的NioSocketChannel
+                 *
+                 */
                 buf.add(new NioSocketChannel(this, ch));
                 return 1;
             }

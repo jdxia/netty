@@ -58,7 +58,10 @@ public class DefaultChannelConfig implements ChannelConfig {
     protected final Channel channel;
 
     private volatile ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+
+    //用于Channel接收数据用的buffer分配器  类型为AdaptiveRecvByteBufAllocator
     private volatile RecvByteBufAllocator rcvBufAllocator;
+
     private volatile MessageSizeEstimator msgSizeEstimator = DEFAULT_MSG_SIZE_ESTIMATOR;
 
     private volatile int connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT;
@@ -72,6 +75,12 @@ public class DefaultChannelConfig implements ChannelConfig {
     private volatile boolean pinEventExecutor = true;
 
     public DefaultChannelConfig(Channel channel) {
+        /**
+         * 这个类型的 RecvByteBufAllocator 可以根据Channel上每次到来的IO数据大小来自适应动态调整ByteBuffer的容量
+         *
+         * 对于客户端NioSocketChannel来说，它上边的IO数据时客户端发送来的网络数据，长度是不定的，
+         * 所以才会需要这样一个可以根据每次IO数据的大小来自适应动态调整容量的ByteBuffer来接收
+         */
         this(channel, new AdaptiveRecvByteBufAllocator());
     }
 

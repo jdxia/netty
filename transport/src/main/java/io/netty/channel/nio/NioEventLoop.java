@@ -1216,8 +1216,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             int readyOps = k.readyOps();
             // We first need to call finishConnect() before try to trigger a read(...) or write(...) as otherwise
             // the NIO JDK channel implementation may throw a NotYetConnectedException.
-            //处理Connect事件
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
+                // ..............处理OP_CONNECT事件.................
+
                 // remove OP_CONNECT as otherwise Selector.select(..) will always return without blocking
                 // See https://github.com/netty/netty/issues/924
                 int ops = k.interestOps();
@@ -1243,6 +1244,8 @@ public final class NioEventLoop extends SingleThreadEventLoop {
              * 等到Socket发送缓冲区变得可写时，Reactor会收到OP_WRITE事件活跃通知，随后在这里调用客户端NioSocketChannel中的forceFlush方法将剩余数据发送出去
              */
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
+                // ..............处理OP_WRITE事件.................
+
                 // Call forceFlush which will also take care of clear the OP_WRITE once there is nothing left to write
                unsafe.forceFlush();
             }
@@ -1256,6 +1259,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
              * 服务端NioServerSocketChannel中的Read方法处理的是Accept事件，客户端NioSocketChannel中的Read方法处理的是Read事件
              */
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+                /**
+                 * {@link AbstractNioMessageChannel.NioMessageUnsafe#read()}
+                 *
+                 * 对比NioSocketChannel与NioServerSocketChannel的不同
+                 * 向Reactor注册的IO事件不同
+                 * 客户端NioSocketChannel向Sub Reactor注册的是SelectionKey.OP_READ事件，
+                 * 而服务端NioServerSocketChannel向Main Reactor注册的是SelectionKey.OP_ACCEPT事件。
+                 */
                 unsafe.read();
             }
         } catch (CancelledKeyException ignored) {

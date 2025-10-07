@@ -597,6 +597,10 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                  *
                  * 注意, 服务端监听的NioServerSocketChannel的pipeline是添加了一个 ChannelInitializer 可以看这里  {@link ServerBootstrap#init(Channel)}
                  * 所以 ChannelHandler的handlerAdded方法 得看 {@link ChannelInitializer#handlerAdded(ChannelHandlerContext)}
+                 *
+                 * 此时pipeline的结构中只有一个ChannelInitializer
+                 *
+                 * 最终会在 ChannelInitializer#handlerAdded 回调方法中初始化客户端NioSocketChannel的pipeline
                  */
                 pipeline.invokeHandlerAddedIfNeeded();
 
@@ -613,10 +617,18 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                 /**
                  * 对于服务端ServerSocketChannel来说 只有绑定端口地址成功后 channel的状态才是active的。
                  * 此时绑定操作作为异步任务在Reactor的任务队列中，绑定操作还没开始，所以这里的isActive()是false
+                 *
+                 * 客户端NioSocketChannel判断是否激活的标准为是否处于Connected状态。那么显然这里肯定是处于connected状态的。
                  */
                 if (isActive()) {
                     if (firstRegistration) {
-                        //触发channelActive事件
+                        /**
+                         * 触发channelActive事件
+                         *
+                         * 最后调用pipeline.fireChannelActive()在NioSocketChannel中的pipeline传播ChannelActive事件，
+                         * 最终在pipeline的头结点HeadContext中响应并注册OP_READ事件到Sub Reactor中的Selector上。
+                         *
+                         */
                         pipeline.fireChannelActive();
                     } else if (config().isAutoRead()) {
                         // This channel was registered before and autoRead() is set. This means we need to begin read

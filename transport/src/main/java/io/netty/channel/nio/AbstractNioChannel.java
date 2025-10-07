@@ -212,6 +212,8 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
         /**
          * Read from underlying {@link SelectableChannel}
+         *
+         * 他的2个子类要注意, 一个是 Byte的是 连接建立后的, 一个是message的是建立连接的
          */
         void read();
 

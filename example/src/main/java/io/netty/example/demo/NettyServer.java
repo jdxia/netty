@@ -206,8 +206,9 @@ public class NettyServer {
                     });
 
             // 启动服务端并绑定端口
-
             int port = 9999;
+
+            // Start the server. 绑定端口启动服务，开始监听accept事件
             // 这里 有 注册ServerSocketChannel到main reactor上
             ChannelFuture future = serverBootstrap.bind("0.0.0.0", port);
 

@@ -35,11 +35,22 @@ public class DefaultMaxBytesRecvByteBufAllocator implements MaxBytesRecvByteBufA
     private final class HandleImpl implements ExtendedHandle {
         private int individualReadMax;
         private int bytesToRead;
+
+        // 表示本次read loop真实读取到了多少个字节
         private int lastBytesRead;
+
+        //表示当前ByteBuffer预计尝试要写入的字节数
         private int attemptBytesRead;
+
+        /**
+         * defaultMaybeMoreSupplier用于判断经过本次read loop读取数据后，ByteBuffer是否满载而归。
+         * 如果是满载而归的话（attemptedBytesRead == lastBytesRead），表明可能NioSocketChannel里还有数据。
+         * 如果不是满载而归，表明NioSocketChannel里没有数据了已经。
+         */
         private final UncheckedBooleanSupplier defaultMaybeMoreSupplier = new UncheckedBooleanSupplier() {
             @Override
             public boolean get() {
+                //判断本次读取byteBuffer是否满载而归
                 return attemptBytesRead == lastBytesRead;
             }
         };
@@ -79,6 +90,7 @@ public class DefaultMaxBytesRecvByteBufAllocator implements MaxBytesRecvByteBufA
 
         @Override
         public boolean continueReading() {
+            // 往下看 defaultMaybeMoreSupplier
             return continueReading(defaultMaybeMoreSupplier);
         }
 

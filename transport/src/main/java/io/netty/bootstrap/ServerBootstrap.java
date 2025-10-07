@@ -256,13 +256,23 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             };
         }
 
+        /**
+         * ServerBootstrapAcceptor主要的作用就是初始化客户端NioSocketChannel，
+         * 并将客户端NioSocketChannel注册到Sub Reactor Group中，并监听OP_READ事件
+         *
+         */
         @Override
         @SuppressWarnings("unchecked")
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             final Channel child = (Channel) msg;
 
+            /**
+             * 向客户端NioSocketChannel的pipeline中
+             * 添加在启动配置类ServerBootstrap中配置的ChannelHandler
+             */
             child.pipeline().addLast(childHandler);
 
+            //利用配置的属性初始化客户端NioSocketChannel
             setChannelOptions(child, childOptions, logger);
             setAttributes(child, childAttrs);
 
@@ -277,6 +287,13 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             }
 
             try {
+                /**
+                 * 向SubReactorGroup中注册NioSocketChannel
+                 * {@link MultithreadEventLoopGroup#register(Channel)}
+                 * 1：在Sub Reactor线程组中选择一个Reactor绑定
+                 * 2：将客户端SocketChannel注册到绑定的Reactor上
+                 * 3：SocketChannel注册到sub reactor中的selector上，并监听OP_READ事件
+                 */
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
