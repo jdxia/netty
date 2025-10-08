@@ -5,15 +5,20 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.example.demo.handler.server.IdleServerHandler;
 import io.netty.example.demo.handler.server.http.MyHttpServerHandler;
 import io.netty.example.demo.handler.server.im.GroupChatServerHandler;
 import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler;
 import io.netty.example.demo.handler.server.serverHandler.NettyServerHandler2;
+import io.netty.example.demo.handler.server.ws.MyTextWsFrameHandler;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.NettyRuntime;
@@ -165,6 +170,16 @@ public class NettyServer {
                         protected void initChannel(NioSocketChannel ch) throws Exception {
                             log.info("clientKey: {}", ch.attr(clientKey).get());
                             /**
+                             * pipeline 这样一个双向链表数据结构中的类型正是 ChannelHandlerContext，由 ChannelHandlerContext 包裹我们自定义的 IO 处理逻辑 ChannelHandler
+                             * ChannelHandler 并不需要感知到它所处的 pipeline 中的上下文信息，只需要专心处理好 IO 逻辑即可，关于 pipeline 的上下文信息全部封装在 ChannelHandlerContext中
+                             *
+                             * ChannelHandler 在 Netty 中的作用只是负责处理 IO 逻辑，比如编码，解码。它并不会感知到它在 pipeline 中的位置，更不会感知和它相邻的两个 ChannelHandler。
+                             * 事实上 ChannelHandler也并不需要去关心这些，它唯一需要关注的就是处理所关心的异步事件
+                             *
+                             * 而 ChannelHandlerContext 中维护了 pipeline 这个双向链表中的 pre 以及 next 指针，这样可以方便的找到与其相邻的 ChannelHandler ，并可以过滤出一些符合执行条件的 ChannelHandler。
+                             * 正如它的命名一样， ChannelHandlerContext  正是起到了维护 ChannelHandler 上下文的一个作用。
+                             * 而 Netty 中的异步事件在 pipeline 中的传播靠的就是这个 ChannelHandlerContext 。
+                             *
                              * 事件在pipeline中的传播具有方向性：
                              * inbound事件从HeadContext开始逐个向后传播直到TailContext。
                              * outbound事件则是反向传播，从TailContext开始反向向前传播直到HeadContext。
@@ -182,17 +197,11 @@ public class NettyServer {
                             // 向pipeline中添加自定义业务处理handler, 添加的数量不受限制
                             ch.pipeline().addLast("logHandler", new LoggingHandler(LogLevel.TRACE));
 
-                            /**
-                             * 说明 : netty 提供的处理空闲状态的
-                             * 1. readerIdleTime: 读空闲, 表示多长时间没有读, 就会发送一个心跳检测包检测是否连接
-                             * 2. writerIdleTime: 写空闲,表示多长时间没有写, 就会发送一个心跳检测包是否连接
-                             * 3. allIdleTime: 读写空闲,表示多长时间没有读写, 就会发送一个心跳检测包检测是否连接
-                             * 如果你把某个时间设为 0，就表示禁用该方向的空闲检测（即不监测读空闲 / 写空闲 / 全空闲）
-                             *
-                             * 当某个空闲状态被触发时，IdleStateHandler 会在 pipeline 中 触发一个特殊事件 —— IdleStateEvent，
-                             *  通过 ctx.fireUserEventTriggered(...) 通知下游 handler。下游的 handler 可以重写 userEventTriggered(...) 来捕获这个事件并做处理
-                             */
-                            ch.pipeline().addLast("idleState", new IdleStateHandler(3, 5, 7, TimeUnit.SECONDS));
+                            // 测试连接空闲
+//                            testIdleHandler(ch);
+
+                            // 测试ws handler
+                            testWsHandler(ch);
 
                             // 测试普通的 channelHandler
 //                            testServerHandler(ch);
@@ -201,7 +210,7 @@ public class NettyServer {
 //                            testHttpHandler(ch);
 
                             // 测试im handler
-                            testImHandler(ch);
+//                            testImHandler(ch);
                         }
                     });
 
@@ -239,6 +248,44 @@ public class NettyServer {
             workerGroup.shutdownGracefully();
         }
 
+    }
+
+    private static void testIdleHandler(NioSocketChannel ch) {
+        /**
+         * 说明 : netty 提供的处理空闲状态的
+         * 1. readerIdleTime: 读空闲, 表示多长时间没有读, 就会发送一个心跳检测包检测是否连接
+         * 2. writerIdleTime: 写空闲,表示多长时间没有写, 就会发送一个心跳检测包是否连接
+         * 3. allIdleTime: 读写空闲,表示多长时间没有读写, 就会发送一个心跳检测包检测是否连接
+         * 如果你把某个时间设为 0，就表示禁用该方向的空闲检测（即不监测读空闲 / 写空闲 / 全空闲）
+         *
+         * 当某个空闲状态被触发时，IdleStateHandler 会在 pipeline 中 触发一个特殊事件 —— IdleStateEvent，
+         *  通过 ctx.fireUserEventTriggered(...) 通知下游 handler。下游的 handler 可以重写 userEventTriggered(...) 来捕获这个事件并做处理
+         */
+        ch.pipeline().addLast("idleState", new IdleStateHandler(3, 5, 7, TimeUnit.SECONDS));
+
+        ch.pipeline().addLast("idleHandler", new IdleServerHandler());
+    }
+
+    private static void testWsHandler(NioSocketChannel ch) {
+        //因为基于http协议, 使用http的编码和解码器
+        ch.pipeline().addLast("httpServerCodec", new HttpServerCodec());
+        // 是以块方式写, 添加ChunkedWriteHandler 处理器
+        ch.pipeline().addLast("chunkedWriteHandler", new ChunkedWriteHandler());
+        /**
+         * 1. http数据在传输过程中是分段的, 添加此handler, 会自动聚合
+         * 2. 当浏览器发送大量的数据时, 就会发出多次http请求
+         */
+        ch.pipeline().addLast("httpObjectAggregator", new HttpObjectAggregator(8192));
+        /**
+         * 1. 对应的是websocket,他的数据是以帧(frame) 形式传递的
+         * 2. 可以看到 webSocketFrame 下面有六个子类
+         * 3. 浏览器请求 ws://localhost:9999/hello 表示请求的uri
+         * 4. WebSocketServerProtocolHandler 核心功能是把 http协议升级为 ws协议,保持长连接,去掉握手,ping/pong消息
+         * 5. 是通过 一个状态码 101升级协议的
+         */
+        ch.pipeline().addLast("webSocketProtocolHandler", new WebSocketServerProtocolHandler("/hello"));
+
+        ch.pipeline().addLast("wsHandler", new MyTextWsFrameHandler());
     }
 
     private static void testImHandler(NioSocketChannel ch) {

@@ -27,6 +27,14 @@ import java.nio.ByteBuffer;
 
 final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
 
+    /**
+     * 创建对象池
+     *
+     * 泛型类ObjectPool<T>是Netty为对象池设计的一个顶层抽象。
+     * 对象池的行为功能均定义在这个泛型抽象类中。
+     * 我们可以通过 ObjectPool#newPool 方法创建指定的对象池。其参数 ObjectCreator 接口用来定义创建池化对象的行为。
+     * 当对象池中需要创建新对象时，就会调用该接口方法 ObjectCreator#newObject 来创建对象。
+     */
     private static final ObjectPool<PooledDirectByteBuf> RECYCLER = ObjectPool.newPool(
             new ObjectCreator<PooledDirectByteBuf>() {
         @Override
@@ -36,11 +44,19 @@ final class PooledDirectByteBuf extends PooledByteBuf<ByteBuffer> {
     });
 
     static PooledDirectByteBuf newInstance(int maxCapacity) {
+        /**
+         * 从对象池中获取对象
+         */
         PooledDirectByteBuf buf = RECYCLER.get();
         buf.reuse(maxCapacity);
         return buf;
     }
 
+    /**
+     * Netty中每个被池化的对象中都会引用对象池的实例ObjectPool RECYCLER ，这个对象池的实例就是专门用来分配和管理被池化对象的
+     * 这个recyclerHandle是池化对象在对象池中的句柄。
+     * 里边封装了和对象池相关的一些行为和信息，recyclerHandle是由对象池在创建对象后传递进来的。
+     */
     private PooledDirectByteBuf(Handle<PooledDirectByteBuf> recyclerHandle, int maxCapacity) {
         super(recyclerHandle, maxCapacity);
     }

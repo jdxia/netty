@@ -68,7 +68,18 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
         String response = "收到请求后返回响应";
         ByteBuf responseBuffer = Unpooled.copiedBuffer(response, CharsetUtil.UTF_8);
 
-        // 写到缓冲区但是没刷
+        /**
+         * Netty 中有两个触发 write 事件传播的方法，它们的传播处理逻辑都是一样的，只不过它们在 pipeline 中的传播起点是不同的。
+         *
+         * channelHandlerContext.write() 方法会从当前 ChannelHandler 开始在 pipeline 中向前传播 write 事件直到 HeadContext。
+         *
+         * channelHandlerContext.channel().write() 方法则会从 pipeline 的尾结点 TailContext 开始在 pipeline 中向前传播 write 事件直到 HeadContext 。
+         */
+
+        /**
+         * 写到缓冲区但是没刷
+         * {@link AbstractChannelHandlerContext#write(Object)}
+         */
         ctx.write(responseBuffer);
 
 
@@ -101,7 +112,18 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
         ctx.flush();
     }
 
-    // 处理异常,一般要关闭通道
+    /**
+     * 处理异常,一般要关闭通道
+     * <p>
+     * 当异步事件在 pipeline 传播的过程中发生异常时，异步事件就会停止在 pipeline 中传播。所以我们在日常开发中，需要对写操作异常情况进行处理。
+     * <p>
+     * 其中 inbound 类异步事件发生异常时，会触发exceptionCaught事件传播。
+     * exceptionCaught 事件本身也是一种 inbound 事件，传播方向会从当前发生异常的 ChannelHandler 开始一直向后传播直到 TailContext。
+     * <p>
+     * 而 outbound 类异步事件发生异常时，则不会触发exceptionCaught事件传播。
+     * 一般只是通知相关 ChannelFuture。
+     * 但如果是 flush 事件在传播过程中发生异常，则会触发当前发生异常的 ChannelHandler 中 exceptionCaught 事件回调。
+     */
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         log.error("NettyServerHandler error", cause);

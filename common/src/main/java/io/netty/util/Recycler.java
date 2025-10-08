@@ -57,8 +57,14 @@ public abstract class Recycler<T> {
             return "NOOP_HANDLE";
         }
     };
+
+    //对象池中每个线程对应的Stack中可以存储池化对象的默认初始最大个数 默认为4096个对象
     private static final int DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD = 4 * 1024; // Use 4k instances as default.
+
+    // 对象池中线程对应的Stack可以存储池化对象默认最大个数 4096
     private static final int DEFAULT_MAX_CAPACITY_PER_THREAD;
+
+    //创建线程回收对象时的回收比例，默认是8，表示只回收1/8的对象。也就是产生8个对象回收一个对象到对象池中
     private static final int RATIO;
     private static final int DEFAULT_QUEUE_CHUNK_SIZE_PER_THREAD;
     private static final boolean BLOCKING_POOL;
@@ -68,12 +74,21 @@ public abstract class Recycler<T> {
         // In the future, we might have different maxCapacity for different object types.
         // e.g. io.netty.recycler.maxCapacity.writeTask
         //      io.netty.recycler.maxCapacity.outboundBuffer
+        /**
+         * DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD：定义每个创建线程对应的Stack结构中的数组栈初始默认的最大容量。默认为4096个。
+         * 可由JVM启动参数 -D io.netty.recycler.maxCapacity 指定
+         */
         int maxCapacityPerThread = SystemPropertyUtil.getInt("io.netty.recycler.maxCapacityPerThread",
                 SystemPropertyUtil.getInt("io.netty.recycler.maxCapacity", DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD));
         if (maxCapacityPerThread < 0) {
             maxCapacityPerThread = DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD;
         }
 
+        /**
+         * DEFAULT_MAX_CAPACITY_PER_THREAD：定义每个创建线程对应的Stack结构中的数组栈的最大容量。
+         * 可由JVM启动参数 -D io.netty.recycler.maxCapacityPerThread 指定，
+         * 如无特殊指定，即采用 DEFAULT_INITIAL_MAX_CAPACITY_PER_THREAD 的值，默认为4096个
+         */
         DEFAULT_MAX_CAPACITY_PER_THREAD = maxCapacityPerThread;
         DEFAULT_QUEUE_CHUNK_SIZE_PER_THREAD = SystemPropertyUtil.getInt("io.netty.recycler.chunkSize", 32);
 
@@ -102,7 +117,10 @@ public abstract class Recycler<T> {
         }
     }
 
+    //创建线程持有对象池的最大容量
     private final int maxCapacityPerThread;
+
+    //创建线程的回收比例
     private final int interval;
     private final int chunkSize;
     private final FastThreadLocal<LocalPool<T>> threadLocal = new FastThreadLocal<LocalPool<T>>() {
