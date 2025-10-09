@@ -179,7 +179,7 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
         super(parent);
         //向Reactor添加任务时，是否唤醒Selector停止轮询IO就绪事件，马上执行异步任务, 默认false
         this.addTaskWakesUp = addTaskWakesUp;
-        //Reactor异步任务队列的大小, 最大16
+        //Reactor异步任务队列的大小, 最小16
         this.maxPendingTasks = DEFAULT_MAX_PENDING_EXECUTOR_TASKS;
         //用于启动 Reactor 线程的 executor -> ThreadPerTaskExecutor
         this.executor = ThreadExecutorMap.apply(executor, this);
