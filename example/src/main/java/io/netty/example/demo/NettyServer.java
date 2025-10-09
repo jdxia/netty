@@ -36,6 +36,7 @@ public class NettyServer {
 
     private static final Logger log = LoggerFactory.getLogger(NettyServer.class);
 
+
     public static void main(String[] args) throws InterruptedException {
         /**
          * nio 3个核心部分: channel(通道), buffer(缓冲区), selector(选择器)
