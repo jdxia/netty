@@ -24,19 +24,36 @@ import io.netty.util.internal.ReferenceCountUpdater;
  * Abstract base class for {@link ByteBuf} implementations that count references.
  */
 public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
+    /**
+     * Netty 为 ByteBuf 引入了引用计数的机制，在 ByteBuf 的整个设计体系中，
+     * 所有的 ByteBuf 都会继承一个抽象类 AbstractReferenceCountedByteBuf ， 它是对接口 ReferenceCounted 的实现。
+     */
+
+    /**
+     * 获取 refCnt 字段在 ByteBuf 对象内存中的偏移
+     * 后续通过 Unsafe 对 refCnt 进行操作
+     */
     private static final long REFCNT_FIELD_OFFSET =
             ReferenceCountUpdater.getUnsafeOffset(AbstractReferenceCountedByteBuf.class, "refCnt");
+
+    /**
+     * 获取 refCnt 字段 的 AtomicFieldUpdater
+     * 后续通过 AtomicFieldUpdater 来操作 refCnt 字段
+     */
     private static final AtomicIntegerFieldUpdater<AbstractReferenceCountedByteBuf> AIF_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(AbstractReferenceCountedByteBuf.class, "refCnt");
 
+    // 创建 ReferenceCountUpdater，对于引用计数的所有操作最终都会代理到这个类中
     private static final ReferenceCountUpdater<AbstractReferenceCountedByteBuf> updater =
             new ReferenceCountUpdater<AbstractReferenceCountedByteBuf>() {
         @Override
         protected AtomicIntegerFieldUpdater<AbstractReferenceCountedByteBuf> updater() {
+            // 通过 AtomicIntegerFieldUpdater 操作 refCnt 字段
             return AIF_UPDATER;
         }
         @Override
         protected long unsafeOffset() {
+            // 通过 Unsafe 操作 refCnt 字段
             return REFCNT_FIELD_OFFSET;
         }
     };

@@ -42,6 +42,7 @@ public abstract class AbstractReferenceCounted implements ReferenceCounted {
 
     // Value might not equal "real" reference count, all access should be via the updater
     @SuppressWarnings({"unused", "FieldMayBeFinal"})
+    // ByteBuf 中的引用计数，初始为 2 （偶数）
     private volatile int refCnt = updater.initialValue();
 
     @Override

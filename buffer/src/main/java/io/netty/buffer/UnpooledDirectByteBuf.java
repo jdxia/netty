@@ -39,8 +39,11 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     private final ByteBufAllocator alloc;
 
+    // Netty ByteBuf 底层依赖的 JDK ByteBuffer
     ByteBuffer buffer; // accessed by UnpooledUnsafeNoCleanerDirectByteBuf.reallocateDirect()
     private ByteBuffer tmpNioBuf;
+
+    // ByteBuf 初始的容量，也是真正的内存占用
     private int capacity;
     private boolean doNotFree;
 
@@ -51,6 +54,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
      * @param maxCapacity     the maximum capacity of the underlying direct buffer
      */
     public UnpooledDirectByteBuf(ByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+        // 设置最大可扩容的容量
         super(maxCapacity);
         ObjectUtil.checkNotNull(alloc, "alloc");
         checkPositiveOrZero(initialCapacity, "initialCapacity");
@@ -61,6 +65,11 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         }
 
         this.alloc = alloc;
+
+        /**
+         * 按照 initialCapacity 指定的初始容量，创建 JDK ByteBuffer
+         * {@link UnpooledUnsafeDirectByteBuf#setByteBuffer(ByteBuffer, boolean)}
+         */
         setByteBuffer(allocateDirect(initialCapacity), false);
     }
 
@@ -118,11 +127,13 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
                 if (doNotFree) {
                     doNotFree = false;
                 } else {
+                    // 释放原来的 buffer
                     freeDirect(oldBuffer);
                 }
             }
         }
 
+        // 重新设置新的 buffer
         this.buffer = buffer;
         tmpNioBuf = null;
         capacity = buffer.remaining();
@@ -140,11 +151,14 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     @Override
     public ByteBuf capacity(int newCapacity) {
+        // newCapacity 不能超过 maxCapacity
         checkNewCapacity(newCapacity);
         int oldCapacity = capacity;
         if (newCapacity == oldCapacity) {
             return this;
         }
+
+        // 计算扩容之后需要拷贝的字节数
         int bytesToCopy;
         if (newCapacity > oldCapacity) {
             bytesToCopy = oldCapacity;
@@ -153,10 +167,19 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
             bytesToCopy = newCapacity;
         }
         ByteBuffer oldBuffer = buffer;
+
+        // 根据 newCapacity 分配一个新的 ByteBuffer（JDK）
         ByteBuffer newBuffer = allocateDirect(newCapacity);
         oldBuffer.position(0).limit(bytesToCopy);
         newBuffer.position(0).limit(bytesToCopy);
+
+        // 将原来 oldBuffer 中的数据拷贝到 newBuffer 中
         newBuffer.put(oldBuffer).clear();
+
+        /**
+         * 释放 oldBuffer，设置 newBuffer
+         * 对于 UnpooledUnsafeDirectByteBuf 来说就是将 newBuffer 的地址设置到 memoryAddress 中
+         */
         setByteBuffer(newBuffer, true);
         return this;
     }
@@ -251,11 +274,13 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     @Override
     protected int _getInt(int index) {
+        // 代理给其底层依赖的 JDK DirectByteBuffer
         return buffer.getInt(index);
     }
 
     @Override
     protected int _getIntLE(int index) {
+        // 切换字节序，从大端变小端
         return ByteBufUtil.swapInt(buffer.getInt(index));
     }
 

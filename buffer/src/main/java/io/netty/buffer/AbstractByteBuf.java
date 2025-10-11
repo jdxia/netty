@@ -45,6 +45,33 @@ import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
  * A skeletal implementation of a buffer.
  */
 public abstract class AbstractByteBuf extends ByteBuf {
+    /**
+     * Netty 中的 ByteBuf 就会被 readerIndex，writerIndex，capacity，maxCapacity 这四个指针分割成四个部分。
+     *
+     * 其中 [0 , capacity) 这部分是创建 ByteBuf 的时候分配的初始容量，这部分是真正占用内存的，
+     * 而 [capacity , maxCapacity) 这部分表示 ByteBuf 可扩容的容量，这部分还未分配内存。
+     *
+     * [0 , readerIndex) 这部分字节是已经被读取过的字节，是可以被丢弃的范围。
+     *
+     * [readerIndex , writerIndex) 这部分字节表示 ByteBuf 中可以被读取的字节。
+     *
+     * [writerIndex , capacity) 这部分表示 ByteBuf 的剩余容量，也就是可以写入的字节范围。
+     *
+     * 这四个指针他们之间的关系为 ：0 <= readerIndex <= writerIndex <= capacity <= maxCapacity
+     *
+     +-----------------------------------------------------------------------------------+
+     |                                   ByteBuf                                         |
+     |-----------------------------------------------------------------------------------|
+     |                                                                                   |
+     |  +--------------------+--------------------+--------------------+----------------+ |
+     |  |  可丢弃的字节区    |     可读字节区      |     可写字节区      |   自动扩容空间   | |
+     |  |  (Discardable)     |    (Readable)      |    (Writable)       |  (Expandable)   | |
+     |  +--------------------+--------------------+--------------------+----------------+ |
+     |       ^                       ^                     ^                    ^       |
+     |   readerIndex            writerIndex            capacity             maxCapacity  |
+     +-----------------------------------------------------------------------------------+
+     */
+
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractByteBuf.class);
     private static final String LEGACY_PROP_CHECK_ACCESSIBLE = "io.netty.buffer.bytebuf.checkAccessible";
     private static final String PROP_CHECK_ACCESSIBLE = "io.netty.buffer.checkAccessible";
@@ -153,16 +180,20 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    // 对 ByteBuf 进行读取操作的时候，需要通过 isReadable 判断 ByteBuf 是否可读
     @Override
     public boolean isReadable() {
+        // 当 readerIndex 等于 writerIndex 的时候，ByteBuf 就不可读了
         return writerIndex > readerIndex;
     }
 
+    // 通过 readableBytes 判断 ByteBuf 具体还有多少字节可读
     @Override
     public boolean isReadable(int numBytes) {
         return writerIndex - readerIndex >= numBytes;
     }
 
+    // 对 ByteBuf 进行写入操作的时候，需要通过 isWritable 判断 ByteBuf 是否可写
     @Override
     public boolean isWritable() {
         return capacity() > writerIndex;
@@ -178,6 +209,10 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return writerIndex - readerIndex;
     }
 
+    /**
+     * 通过 writableBytes 判断 ByteBuf 具体还可以写多少字节
+     * 一个 ByteBuf 真正的剩余可写容量的计算方式除了上小节中介绍的 writableBytes() 方法返回的字节数之外还需要在加上 readerIndex
+     */
     @Override
     public int writableBytes() {
         return capacity() - writerIndex;
@@ -281,14 +316,27 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 当 ByteBuf 的容量已经被写满，变为不可写的时候，如果继续对 ByteBuf 进行写入，那么就需要扩容了，但扩容后的 capacity 最大不能超过 maxCapacity
+     */
     final void ensureWritable0(int minWritableBytes) {
+        /**
+         * minWritableBytes 表示本次要写入的字节数
+         * 获取当前 writerIndex 的位置
+         */
         final int writerIndex = writerIndex();
+
+        // 为满足本次的写入操作，预期的 ByteBuf 容量大小
         final int targetCapacity = writerIndex + minWritableBytes;
+
         // using non-short-circuit & to reduce branching - this is a hot path and targetCapacity should rarely overflow
+        // 如果 targetCapacity 在（capacity , maxCapacity] 之间，则进行扩容
         if (targetCapacity >= 0 & targetCapacity <= capacity()) {
             ensureAccessible();
             return;
         }
+
+        // 扩容后的 capacity 最大不能超过 maxCapacity
         if (checkBounds && (targetCapacity < 0 || targetCapacity > maxCapacity)) {
             ensureAccessible();
             throw new IndexOutOfBoundsException(String.format(
@@ -301,6 +349,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
         int newCapacity = fastWritable >= minWritableBytes ? writerIndex + fastWritable
                 : alloc().calculateNewCapacity(targetCapacity, maxCapacity);
 
+        // 扩容 ByteBuf
         // Adjust to the new capacity.
         capacity(newCapacity);
     }
@@ -310,21 +359,28 @@ public abstract class AbstractByteBuf extends ByteBuf {
         ensureAccessible();
         checkPositiveOrZero(minWritableBytes, "minWritableBytes");
 
+        // 如果剩余容量可以满足本次写入操作，则不会扩容，直接返回
         if (minWritableBytes <= writableBytes()) {
             return 0;
         }
 
         final int maxCapacity = maxCapacity();
         final int writerIndex = writerIndex();
+
+        // 如果本次写入的数据大小已经超过了 ByteBuf 的最大可写容量 maxCapacity - writerIndex
         if (minWritableBytes > maxCapacity - writerIndex) {
+            // force = false ， 那么停止扩容，直接返回
+            // force = true, 直接扩容到 maxCapacity，如果当前 capacity 已经等于 maxCapacity 了则停止扩容
             if (!force || capacity() == maxCapacity) {
                 return 1;
             }
 
+            // 虽然扩容之后还是无法满足写入需求，但还是强制扩容至 maxCapacity
             capacity(maxCapacity);
             return 3;
         }
 
+        // 下面就是普通的扩容逻辑
         int fastWritable = maxFastWritableBytes();
         int newCapacity = fastWritable >= minWritableBytes ? writerIndex + fastWritable
                 : alloc().calculateNewCapacity(writerIndex + minWritableBytes, maxCapacity);
@@ -352,10 +408,15 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public byte getByte(int index) {
+        // 检查 index 的边界，index 不能超过 capacity（index < capacity）
         checkIndex(index);
         return _getByte(index);
     }
 
+    /**
+     * 由 AbstractByteBuf 具体的子类负责实现。
+     * 比如，在 UnpooledDirectByteBuf 类的实现中，直接将 _getByte 操作代理给其底层依赖的 JDK DirectByteBuffer。
+     */
     protected abstract byte _getByte(int index);
 
     @Override
@@ -365,6 +426,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public short getUnsignedByte(int index) {
+        // 将获取到的 Byte 转换为 UnsignedByte
         return (short) (getByte(index) & 0xFF);
     }
 
@@ -500,6 +562,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
     @Override
     public ByteBuf getBytes(int index, ByteBuf dst, int length) {
         getBytes(index, dst, dst.writerIndex(), length);
+        // 调整 dst 的  writerIndex
         dst.writerIndex(dst.writerIndex() + length);
         return this;
     }

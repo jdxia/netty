@@ -29,6 +29,7 @@ import java.nio.ByteBuffer;
  */
 public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
 
+    // 直接操作 OS 的内存地址
     long memoryAddress;
 
     /**
@@ -65,7 +66,11 @@ public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
 
     @Override
     final void setByteBuffer(ByteBuffer buffer, boolean tryFree) {
+        // UnpooledDirectByteBuf 底层会依赖一个 JDK 的 ByteBuffer
+        // 后续对 UnpooledDirectByteBuf 的操作， Netty 全部会代理到 JDK ByteBuffer 中
         super.setByteBuffer(buffer, tryFree);
+
+        // 初始指定的 ByteBuf 容量 initialCapacity
         memoryAddress = PlatformDependent.directBufferAddress(buffer);
     }
 
@@ -88,6 +93,7 @@ public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
 
     @Override
     protected byte _getByte(int index) {
+        // 底层依赖 PlatformDependent0，直接通过内存地址读取 byte
         return UnsafeByteBufUtil.getByte(addr(index));
     }
 
@@ -285,6 +291,7 @@ public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
     }
 
     final long addr(int index) {
+        // 获取偏移 index 对应的内存地址
         return memoryAddress + index;
     }
 

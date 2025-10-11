@@ -91,6 +91,13 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
      * Focuses on enforcing the maximum messages per read condition for {@link #continueReading()}.
      */
     public abstract class MaxMessageHandle implements ExtendedHandle {
+
+        /**
+         * Netty 会在一个 read loop 中不停的读取 socket 中的数据直到数据被读取完毕或者读满 16 次，结束 read loop 停止读取。
+         * ByteBuf 越大那么 Netty 读取的次数就越少，ByteBuf 越小那么 Netty 读取的次数就越多，所以需要一种机制将 ByteBuf 的容量控制在一个合理的范围内。
+         */
+
+
         private ChannelConfig config;
 
         //用于控制每次read loop里最大可以循环读取的次数，默认为16次

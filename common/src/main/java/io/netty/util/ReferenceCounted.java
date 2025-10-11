@@ -30,6 +30,23 @@ package io.netty.util;
  * </p>
  */
 public interface ReferenceCounted {
+
+    /**
+     * 为了检测内存泄露的发生，这也是 Netty 为 ByteBuf 引入了引用计数的另一个原因，当 ByteBuf 不再被引用的时候，也就是没有任何强引用或者软引用的时候，
+     * 如果此时发生 GC , 那么这个 ByteBuf 实例（位于 JVM 堆中）就需要被回收了，这时 Netty 就会检查这个 ByteBuf 的引用计数是否为 0 ，
+     * 如果不为 0 ，说明我们忘记调用 release() 释放了，近而判断出这个 ByteBuf 发生了内存泄露
+     */
+
+    /**
+     * 每个 ByteBuf 的内部都维护了一个叫做 refCnt 的引用计数，我们可以通过 refCnt() 方法来获取 ByteBuf 当前的引用计数 refCnt。
+     * 当 ByteBuf 在其他上下文中被引用的时候，我们需要通过 retain() 方法将 ByteBuf 的引用计数加 1。
+     * 另外我们也可以通过 retain(int increment) 方法来指定 refCnt 增加的大小（increment）。
+     *
+     * 有对 ByteBuf 的引用那么就有对 ByteBuf 的释放，每当我们使用完 ByteBuf 的时候就需要手动调用 release() 方法将 ByteBuf 的引用计数减 1 。
+     * 当引用计数 refCnt 变成 0 的时候，Netty 就会通过 deallocate 方法来释放 ByteBuf 所引用的内存资源。
+     * 这时 release() 方法会返回 true , 如果 refCnt 还不为 0 ，那么就返回 false 。同样我们也可以通过 release(int decrement) 方法来指定 refCnt 减少多少（decrement）
+     */
+
     /**
      * Returns the reference count of this object.  If {@code 0}, it means this object has been deallocated.
      */

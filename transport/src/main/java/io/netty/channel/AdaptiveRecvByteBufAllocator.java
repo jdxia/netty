@@ -34,11 +34,35 @@ import static java.lang.Math.min;
  */
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
 
+    /**
+     * 那么在什么情况下需要对 ByteBuf 扩容，每次扩容多少 ？ 什么情况下需要对 ByteBuf 进行缩容，每次缩容多少呢 ？
+     *
+     * 这就用到了一个重要的容量索引结构 ——  SIZE_TABLE，它里边定义索引了 ByteBuf 的每一种容量大小。相当于是扩缩容的容量索引表。
+     * 每次扩容多少，缩容多少全部记录在这个容量索引表中。
+     *
+     * 当索引容量小于 512 时，SIZE_TABLE 中定义的容量是从 16 开始按照 16 递增
+     * 当索引容量大于 512 时，SIZE_TABLE 中定义的容量是按前一个索引容量的 2 倍递增。
+     *
+     * 满足一次扩容条件就进行扩容，并且扩容步长为 4 (INDEX_INCREMENT)， 扩容比较奔放。
+     *
+     * 如果 totalBytesRead 小于等于 SIZE_TABLE[index - INDEX_DECREMENT]，也就是如果本轮 read loop 结束之后总共读取的字节数小于等于1024。
+     * 表示本次读取到的字节数比当前 ByteBuf 容量的下一级容量还要小，说明当前 ByteBuf 的容量分配的有些大了，设置缩容标识decreaseNow = true。
+     * 当下次 read loop 的时候如果继续满足缩容条件，那么就开始进行缩容。缩容后的容量为 SIZE_TABLE[index - INDEX_DECREMENT]，但不能小于SIZE_TABLE[minIndex]（16）。
+     *
+     * 注意，这里需要满足两次缩容条件才会进行缩容，且缩容步长为 1 (INDEX_DECREMENT)，缩容比较谨慎。
+     */
+
     // 表示ByteBuffer最小的容量，默认为64，也就是无论ByteBuffer在怎么缩容，容量也不会低于64
     static final int DEFAULT_MINIMUM = 64;
 
     // Use an initial value that is bigger than the common MTU of 1500
-    // 表示ByteBuffer的初始化容量。默认为2048
+    /**
+     * 在接收网络数据的过程中，其实一开始是很难确定出该用多大容量的 ByteBuf 去接收的，所以 Netty 在一开始会首先预估一个初始容量 DEFAULT_INITIAL (2048)
+     * 表示ByteBuffer的初始化容量。默认为2048
+     *
+     * 用初始容量为 2048 大小的 ByteBuf 去读取 socket 中的数据，在每一次读取完 socket 之后，Netty 都会评估 ByteBuf 的容量大小是否合适。
+     * 如果每一次都能把 ByteBuf 装满，那说明我们预估的容量太小了，socket 中还有更多的数据，那么就需要对 ByteBuf 进行扩容，下一次读取 socket 的时候就换一个容量更大的 ByteBuf
+     */
     static final int DEFAULT_INITIAL = 2048;
 
     // 表示ByteBuffer的最大容量，默认为65536，也就是无论ByteBuffer在怎么扩容，容量也不会超过65536
@@ -140,9 +164,19 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
             // This helps adjust more quickly when large amounts of data is pending and can avoid going back to
             // the selector to check for more data. Going back to the selector can add significant latency for large
             // data transfers.
+            /**
+             * bytes 为本次从 socket 中真实读取的数据大小
+             * attemptedBytesRead 为 ByteBuf 可写的容量大小，初始为 2048
+             */
             if (bytes == attemptedBytesRead()) {
+                /**
+                 * 如果本次读取 socket 中的数据将 ByteBuf 装满了
+                 * 那么就对 ByteBuf 进行扩容，在下一次读取的时候用更大的 ByteBuf 去读
+                 */
                 record(bytes);
             }
+
+            // 记录本次从 socket 中读取的数据大小
             super.lastBytesRead(bytes);
         }
 
@@ -169,7 +203,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
         @Override
         public void readComplete() {
-            //是否对recvbuf进行扩容缩容
+            //是否进行扩容缩容
             record(totalBytesRead());
         }
     }
