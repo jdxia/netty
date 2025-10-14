@@ -38,6 +38,7 @@ public final class PooledByteBufAllocatorMetric implements ByteBufAllocatorMetri
         return allocator.numHeapArenas();
     }
 
+    // 内存池一共有多少个 PoolArenas
     /**
      * Return the number of direct arenas.
      */

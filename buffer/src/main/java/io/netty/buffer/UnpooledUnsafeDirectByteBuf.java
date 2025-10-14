@@ -39,6 +39,7 @@ public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
      * @param maxCapacity     the maximum capacity of the underlying direct buffer
      */
     public UnpooledUnsafeDirectByteBuf(ByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+        // 调用父类 UnpooledDirectByteBuf 构建函数创建底层依赖的 JDK DirectByteBuffer
         super(alloc, initialCapacity, maxCapacity);
     }
 
@@ -71,6 +72,7 @@ public class UnpooledUnsafeDirectByteBuf extends UnpooledDirectByteBuf {
         super.setByteBuffer(buffer, tryFree);
 
         // 初始指定的 ByteBuf 容量 initialCapacity
+        // 获取 JDK DirectByteBuffer 的内存地址
         memoryAddress = PlatformDependent.directBufferAddress(buffer);
     }
 

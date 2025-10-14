@@ -187,6 +187,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     private final int normalCacheSize;
     private final List<PoolArenaMetric> heapArenaMetrics;
     private final List<PoolArenaMetric> directArenaMetrics;
+    // 线程本地缓存
     private final PoolThreadLocalCache threadCache;
     private final int chunkSize;
     private final PooledByteBufAllocatorMetric metric;
@@ -389,18 +390,23 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     @Override
     protected ByteBuf newDirectBuffer(int initialCapacity, int maxCapacity) {
+        // 获取线程本地缓存，线程第一次申请内存的时候会在这里与 PoolArena 进行绑定
         PoolThreadCache cache = threadCache.get();
+        // 获取与当前线程绑定的 PoolArena
         PoolArena<ByteBuffer> directArena = cache.directArena;
 
         final ByteBuf buf;
         if (directArena != null) {
+            // 获取与当前线程绑定的 PoolArena
             buf = directArena.allocate(cache, initialCapacity, maxCapacity);
         } else {
+            // 申请非池化内存
             buf = PlatformDependent.hasUnsafe() ?
                     UnsafeByteBufUtil.newUnsafeDirectByteBuf(this, initialCapacity, maxCapacity) :
                     new UnpooledDirectByteBuf(this, initialCapacity, maxCapacity);
         }
 
+        // 如果内存泄露探测开启，则用 LeakAwareByteBuf 包装 PooledByteBuf 返回
         return toLeakAwareBuffer(buf);
     }
 

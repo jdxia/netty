@@ -133,6 +133,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
         // 当前执行线程为Sub Reactor线程，处理连接数据读取逻辑是在NioSocketChannel中
         @Override
         public final void read() {
+            // 获取 SocketChannelConfig
             final ChannelConfig config = config();
             if (shouldBreakReadReady(config)) {
                 clearReadPending();

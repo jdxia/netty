@@ -96,6 +96,14 @@ public abstract class AbstractByteBufAllocator implements ByteBufAllocator {
         return buf;
     }
 
+    /**
+     * 是否默认分配 directBuffer
+     *
+     * 一般情况下，JDK 都会包含有效的 CLEANER 机制，
+     * 所以我们完全可以仅是通过 -Dio.netty.noPreferDirect （默认 false）来控制 Netty 默认情况下走  Direct Memory
+     *
+     * 但如果是安卓平台，那么无论  -Dio.netty.noPreferDirect  如何设置，Netty 默认情况下都会走  Heap Memory
+     */
     private final boolean directByDefault;
     private final ByteBuf emptyBuf;
 

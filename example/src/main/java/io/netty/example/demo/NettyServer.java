@@ -230,8 +230,8 @@ public class NettyServer {
                         return;
                     }
 
+                    // 可以走一个递归
                     log.error("端口[ {} ]绑定失败! 端口+1 重新绑定", port);
-                    bind(serverBootstrap, port + 1);
                 }
             });
 

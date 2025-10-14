@@ -21,11 +21,15 @@ package io.netty.buffer;
  */
 class UnpooledSlicedByteBuf extends AbstractUnpooledSlicedByteBuf {
     UnpooledSlicedByteBuf(AbstractByteBuf buffer, int index, int length) {
+        // index = readerIndex
+        // length = readableBytes()
         super(buffer, index, length);
     }
 
     @Override
     public int capacity() {
+        // 视图 ByteBuf 的 capacity 和 maxCapacity 相等
+        // 均为原生 ByteBuf 的 readableBytes()
         return maxCapacity();
     }
 
@@ -36,6 +40,7 @@ class UnpooledSlicedByteBuf extends AbstractUnpooledSlicedByteBuf {
 
     @Override
     protected byte _getByte(int index) {
+        // 底层其实是对原生 ByteBuf 的访问
         return unwrap()._getByte(idx(index));
     }
 

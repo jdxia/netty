@@ -58,6 +58,7 @@ public class NioEventLoopGroup extends MultithreadEventLoopGroup {
      * {@link SelectorProvider} which is returned by {@link SelectorProvider#provider()}.
      */
     public NioEventLoopGroup(ThreadFactory threadFactory) {
+        //这里可以获得选择器提供器了
         this(0, threadFactory, SelectorProvider.provider());
     }
 

@@ -30,6 +30,9 @@ import java.security.PrivilegedAction;
 final class CleanerJava9 implements Cleaner {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(CleanerJava9.class);
 
+    /**
+     * 会检查是否可以通过  sun.misc.Unsafe 的 invokeCleaner 方法正确执行 DirectBuffer 的 Cleaner，如果执行过程中发生异常，那么 CLEANER 就为 NOOP，Netty 在默认情况下就会走 Heap Memory
+     */
     private static final Method INVOKE_CLEANER;
 
     static {

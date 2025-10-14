@@ -313,6 +313,7 @@ public final class Unpooled {
         case 1:
             ByteBuf buffer = buffers[0];
             if (buffer.isReadable()) {
+                // 直接返回 buffer.slice() 视图
                 return wrappedBuffer(buffer.order(BIG_ENDIAN));
             } else {
                 buffer.release();
@@ -322,8 +323,11 @@ public final class Unpooled {
             for (int i = 0; i < buffers.length; i++) {
                 ByteBuf buf = buffers[i];
                 if (buf.isReadable()) {
+                    // 从第一个可读的 ByteBuf —— buffers[i] 开始创建 CompositeByteBuf
                     return new CompositeByteBuf(ALLOC, false, maxNumComponents, buffers, i);
                 }
+
+                // buf 不可读则 release
                 buf.release();
             }
             break;

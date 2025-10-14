@@ -91,9 +91,11 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
 
         if (executor == null) {
             // executor 用于创建Reactor线程
+            // 就是设置了一个线程工厂，有任务就创建一个线程执行
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
 
+        //事件执行器
         children = new EventExecutor[nThreads];
 
         //循环创建reactor group中的Reactor
@@ -146,6 +148,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
          */
         chooser = chooserFactory.newChooser(children);
 
+        //终止事件
         // 创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
@@ -158,6 +161,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             }
         };
 
+        //添加终止事件
         //为所有Reactor添加terminationListener
         for (EventExecutor e: children) {
             // 有创建就有启动，有启动就有关闭，这里会创建Reactor关闭的回调函数terminationListener，在Reactor关闭时回调

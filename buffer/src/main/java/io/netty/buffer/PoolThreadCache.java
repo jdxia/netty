@@ -484,6 +484,7 @@ final class PoolThreadCache {
     }
 
     private static final class FreeOnFinalize {
+        // 待释放的 PoolThreadCache
         private final PoolThreadCache cache;
 
         private FreeOnFinalize(PoolThreadCache cache) {
@@ -497,6 +498,7 @@ final class PoolThreadCache {
             try {
                 super.finalize();
             } finally {
+                // 当 FreeOnFinalize 实例要被回收的时候，触发 PoolThreadCache 的释放
                 cache.free(true);
             }
         }

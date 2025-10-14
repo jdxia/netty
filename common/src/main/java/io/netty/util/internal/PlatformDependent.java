@@ -86,7 +86,15 @@ public final class PlatformDependent {
     private static final boolean CAN_ENABLE_TCP_NODELAY_BY_DEFAULT = !isAndroid();
 
     private static final Throwable UNSAFE_UNAVAILABILITY_CAUSE = unsafeUnavailabilityCause0();
+
+    /**
+     * 如果 PlatformDependent.directBufferPreferred() 方法返回 true ,那么 ByteBufAllocator 接下来在分配内存的时候，默认情况下就会分配  directBuffer
+     *
+     * 是否偏向于分配 Direct Memory
+     */
     private static final boolean DIRECT_BUFFER_PREFERRED;
+
+    // JVM 指定的 -XX:MaxDirectMemorySize 最大堆外内存
     private static final long MAX_DIRECT_MEMORY = estimateMaxDirectMemory();
 
     private static final int MPSC_CHUNK_SIZE =  1024;
@@ -112,7 +120,12 @@ public final class PlatformDependent {
 
     private static final int ADDRESS_SIZE = addressSize0();
     private static final boolean USE_DIRECT_BUFFER_NO_CLEANER;
+
+    // Netty 层面  Direct Memory 的用量统计
+    // 为 NULL 表示在 Netty 层面不进行特殊限制，完全由 JVM 进行限制 Direct Memory 的用量
     private static final AtomicLong DIRECT_MEMORY_COUNTER;
+
+    // Netty 层面 Direct Memory 的最大用量
     private static final long DIRECT_MEMORY_LIMIT;
     private static final ThreadLocalRandomProvider RANDOM_PROVIDER;
     private static final Cleaner CLEANER;
@@ -158,18 +171,31 @@ public final class PlatformDependent {
         long maxDirectMemory = SystemPropertyUtil.getLong("io.netty.maxDirectMemory", -1);
 
         if (maxDirectMemory == 0 || !hasUnsafe() || !PlatformDependent0.hasDirectBufferNoCleanerConstructor()) {
+            // maxDirectMemory = 0 表示后续创建的 DirectBuffer 是带有 Cleaner 的，Netty 自己不会强制限定 maxDirectMemory 的用量，完全交给 JDK 的 maxDirectMemory 来限制
+            // 因为 Netty 限制了也没用，其底层依然依赖的是 JDK  DirectBuffer（Cleaner），JDK 会限制 maxDirectMemory 的用量
+            // 在没有 Unsafe 的情况下，那么就必须使用 Cleaner，因为如果不使用 Cleaner 的话，又没有 Unsafe，我们就无法释放 Native Memory 了
+            // 如果 JDK 本身不包含创建 NoCleaner DirectBuffer 的构造函数 —— DirectByteBuffer(long, int)，那么自然只能使用 Cleaner
             USE_DIRECT_BUFFER_NO_CLEANER = false;
+
+            // Netty 自身不会统计 Direct Memory 的用量，完全交给 JDK 来统计
             DIRECT_MEMORY_COUNTER = null;
         } else {
             USE_DIRECT_BUFFER_NO_CLEANER = true;
             if (maxDirectMemory < 0) {
+                // maxDirectMemory < 0 (默认 -1) 后续创建 NoCleaner DirectBuffer
+                // Netty 层面会单独限制 maxDirectMemory 用量，maxDirectMemory 的值与 -XX:MaxDirectMemorySize 的值相同
+                // 因为 JDK 不会统计和限制 NoCleaner DirectBuffer 的用量
+                // 注意，这里 Netty 的 maxDirectMemory 和 JDK 的 maxDirectMemory 是分别单独统计的
+                // 在 JVM 进程的角度来说，整体 maxDirectMemory 的用量是 -XX:MaxDirectMemorySize 的两倍（Netty用的和 JDK 用的之和）
                 maxDirectMemory = MAX_DIRECT_MEMORY;
                 if (maxDirectMemory <= 0) {
                     DIRECT_MEMORY_COUNTER = null;
                 } else {
+                    // 统计 Netty DirectMemory 的用量
                     DIRECT_MEMORY_COUNTER = new AtomicLong();
                 }
             } else {
+                // maxDirectMemory > 0 后续创建 NoCleaner DirectBuffer,Netty 层面的 maxDirectMemory 就是 io.netty.maxDirectMemory 指定的值
                 DIRECT_MEMORY_COUNTER = new AtomicLong();
             }
         }
@@ -188,14 +214,23 @@ public final class PlatformDependent {
             // only direct to method if we are not running on android.
             // See https://github.com/netty/netty/issues/2604
             if (javaVersion() >= 9) {
+                // 检查 sun.misc.Unsafe 类中是否包含有效的 invokeCleaner 方法
                 CLEANER = CleanerJava9.isSupported() ? new CleanerJava9() : NOOP;
             } else {
+                // 检查 java.nio.ByteBuffer 中是否包含了 cleaner 字段
                 CLEANER = CleanerJava6.isSupported() ? new CleanerJava6() : NOOP;
             }
         } else {
             CLEANER = NOOP;
         }
 
+        /**
+         * 要想使得 DIRECT_BUFFER_PREFERRED 为 true ，必须同时满足以下两个条件:
+         * -Dio.netty.noPreferDirect 参数必须指定为 false（默认）。
+         * CLEANER 不为 NULL , 也就是需要 JDK 中包含有效的 CLEANER 机制。
+         *
+         * 如果是安卓平台，那么 CLEANER 直接就是 NOOP，不会做任何判断，默认情况下直接走 Heap Memory , 除非特殊指定要走 Direct Memory
+         */
         // We should always prefer direct buffers by default if we can use a Cleaner to release direct buffers.
         DIRECT_BUFFER_PREFERRED = CLEANER != NOOP
                                   && !SystemPropertyUtil.getBoolean("io.netty.noPreferDirect", false);
@@ -767,10 +802,14 @@ public final class PlatformDependent {
      * this method <strong>MUST</strong> be deallocated via {@link #freeDirectNoCleaner(ByteBuffer)}.
      */
     public static ByteBuffer allocateDirectNoCleaner(int capacity) {
+        // Netty 的 DirectByteBuf 是否带有 Cleaner
         assert USE_DIRECT_BUFFER_NO_CLEANER;
 
+        // 增加 Native Memory 用量统计
         incrementMemoryCounter(capacity);
         try {
+            // 分配 Native Memory
+            // 初始化 NoCleaner 的 DirectByteBuffer
             return PlatformDependent0.allocateDirectNoCleaner(capacity);
         } catch (Throwable e) {
             decrementMemoryCounter(capacity);
@@ -805,7 +844,9 @@ public final class PlatformDependent {
         assert USE_DIRECT_BUFFER_NO_CLEANER;
 
         int capacity = buffer.capacity();
+        // 释放 Native Memory
         PlatformDependent0.freeMemory(PlatformDependent0.directBufferAddress(buffer));
+        // 减少 Native Memory 用量统计
         decrementMemoryCounter(capacity);
     }
 
@@ -835,7 +876,11 @@ public final class PlatformDependent {
         return Pow2.align(value, alignment);
     }
 
+    /**
+     * 当 Netty 层面的 direct memory 用量超过了 -Dio.netty.maxDirectMemory 参数指定的值时，那么就会抛出 OutOfDirectMemoryError ，分配 DirectByteBuf 将会失败
+     */
     private static void incrementMemoryCounter(int capacity) {
+        // 只统计 NoCleaner 的 DirectByteBuf 所引用的 Native Memory
         if (DIRECT_MEMORY_COUNTER != null) {
             long newUsedMemory = DIRECT_MEMORY_COUNTER.addAndGet(capacity);
             if (newUsedMemory > DIRECT_MEMORY_LIMIT) {
@@ -855,6 +900,23 @@ public final class PlatformDependent {
     }
 
     public static boolean useDirectBufferNoCleaner() {
+        /**
+         * USE_DIRECT_BUFFER_NO_CLEANER = TRUE 表示 Netty 创建出来的 DirectByteBuf 不带有 Cleaner 。
+         * Direct Memory 的用量不会受到 JVM 参数 -XX:MaxDirectMemorySize 的限制。
+         *
+         * USE_DIRECT_BUFFER_NO_CLEANER = FALSE 表示 Netty 创建出来的 DirectByteBuf 带有 Cleaner 。
+         * Direct Memory 的用量会受到 JVM 参数 -XX:MaxDirectMemorySize 的限制。
+         *
+         * 可以通过 -Dio.netty.maxDirectMemory 来设置 USE_DIRECT_BUFFER_NO_CLEANER 的值，除此之外，该参数还可以指定在 Netty 层面上可以使用的最大 DirectMemory 用量
+         *
+         * io.netty.maxDirectMemory = 0 那么 USE_DIRECT_BUFFER_NO_CLEANER 就为 FALSE ,
+         * 表示在 Netty 层面创建出来的 DirectByteBuf 都是带有 Cleaner 的，这种情况下 Netty 并不会限制 maxDirectMemory 的用量，
+         * 因为限制了也没用，具体能用多少 maxDirectMemory，还是由 JVM 参数 -XX:MaxDirectMemorySize 决定的
+         *
+         *
+         * io.netty.maxDirectMemory < 0 ，默认为 -1，也就是在默认情况下 USE_DIRECT_BUFFER_NO_CLEANER 为 TRUE , 创建出来的 DirectByteBuf 都是不带 Cleaner 的。
+         * 由于在这种情况下 maxDirectMemory 的用量并不会受到 JVM 参数 -XX:MaxDirectMemorySize 的限制，所以在 Netty 层面上必须限制 maxDirectMemory 的用量，默认值就是  -XX:MaxDirectMemorySize  指定的值
+         */
         return USE_DIRECT_BUFFER_NO_CLEANER;
     }
 

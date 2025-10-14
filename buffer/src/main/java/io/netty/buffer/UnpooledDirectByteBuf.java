@@ -39,7 +39,7 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 
     private final ByteBufAllocator alloc;
 
-    // Netty ByteBuf 底层依赖的 JDK ByteBuffer
+    // Netty ByteBuf 底层依赖的 JDK ByteBuffer, 而这个 DirectByteBuffer 就是带有 Cleaner 的 ByteBuf
     ByteBuffer buffer; // accessed by UnpooledUnsafeNoCleanerDirectByteBuf.reallocateDirect()
     private ByteBuffer tmpNioBuf;
 
@@ -630,11 +630,14 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
         ensureAccessible();
         ByteBuffer src;
         try {
+            // 将原生 ByteBuf 中 [index , index + length) 这段范围的数据拷贝到新的 ByteBuf 中
             src = (ByteBuffer) buffer.duplicate().clear().position(index).limit(index + length);
         } catch (IllegalArgumentException ignored) {
             throw new IndexOutOfBoundsException("Too many bytes to read - Need " + (index + length));
         }
 
+        // 首先新申请一段 native memory , 新的 ByteBuf 初始容量为 length (真实容量)，最大容量与原生 ByteBuf 的 maxCapacity 相等
+        // readerIndex = 0 , writerIndex = length
         return alloc().directBuffer(length, maxCapacity()).writeBytes(src);
     }
 

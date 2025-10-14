@@ -193,7 +193,14 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                  */
                 newTaskQueue(taskQueueFactory), newTaskQueue(tailTaskQueueFactory),
                 rejectedExecutionHandler);
+
+        //选择器提供器
         this.provider = ObjectUtil.checkNotNull(selectorProvider, "selectorProvider");
+
+        /**
+         * 选择器策略，有可能可以推迟select方法而先去执行任务
+         * {@link DefaultSelectStrategy} 看他接口的
+         */
         this.selectStrategy = ObjectUtil.checkNotNull(strategy, "selectStrategy");
 
         /**
@@ -202,9 +209,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
          */
         final SelectorTuple selectorTuple = openSelector();
 
+        //包装后的选择器
         //通过用 SelectedSelectionKeySet 装饰后的 unwrappedSelector
         this.selector = selectorTuple.selector;
 
+        //原始NIO的选择器
         //Netty优化过的JDK NIO远程Selector
         this.unwrappedSelector = selectorTuple.unwrappedSelector;
     }

@@ -74,9 +74,21 @@ public final class ByteBufUtil {
             (int) CharsetUtil.encoder(CharsetUtil.UTF_8).maxBytesPerChar();
 
     static final int WRITE_CHUNK_SIZE = 8192;
+
+    /**
+     * 默认 PooledByteBufAllocator，池化管理 ByteBuf
+     *
+     * Netty 提供了 -Dio.netty.allocator.type 参数来让我们决定是否采用内存池来管理 ByteBuf ， 默认值是 pooled , 也就是说 Netty 默认是采用池化的方式来管理 PooledByteBuf 。
+     * 如果是安卓平台，那么默认是使用非池化的 ByteBuf （unpooled）。
+     *
+     * 当参数 io.netty.allocator.type 的值为 pooled 时，Netty 的默认 ByteBufAllocator 是 PooledByteBufAllocator.DEFAULT 。
+     *
+     * 当参数 io.netty.allocator.type 的值为 unpooled 时，Netty 的默认 ByteBufAllocator 是 UnpooledByteBufAllocator.DEFAULT
+     */
     static final ByteBufAllocator DEFAULT_ALLOCATOR;
 
     static {
+        // 默认为 pooled
         String allocType = SystemPropertyUtil.get(
                 "io.netty.allocator.type", PlatformDependent.isAndroid() ? "unpooled" : "pooled");
         allocType = allocType.toLowerCase(Locale.US).trim();

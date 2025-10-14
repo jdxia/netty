@@ -249,17 +249,26 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
     @Override
     public ByteBuf discardReadBytes() {
+        // readerIndex 为 0 表示没有可以丢弃的字节
         if (readerIndex == 0) {
             ensureAccessible();
             return this;
         }
 
         if (readerIndex != writerIndex) {
+            // 将 [readerIndex, writerIndex) 这段字节范围移动到 ByteBuf 的开头
+            // 也就是丢弃 readerIndex 之前的字节
             setBytes(0, this, readerIndex, writerIndex - readerIndex);
+            // writerIndex 和 readerIndex 都向前移动 readerIndex 大小
             writerIndex -= readerIndex;
+            // 重新调整 markedReaderIndex 和 markedWriterIndex 的位置
+            // 都对应向前移动 readerIndex 大小。
             adjustMarkers(readerIndex);
             readerIndex = 0;
         } else {
+            // readerIndex = writerIndex 表示当前 ByteBuf 已经不可读了
+            // 将 readerIndex 之前的字节全部丢弃，ByteBuf 恢复到最初的状态
+            // 整个 ByteBuf 的容量都可以被写入
             ensureAccessible();
             adjustMarkers(readerIndex);
             writerIndex = readerIndex = 0;
@@ -267,9 +276,17 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return this;
     }
 
+    /**
+     * 进行有条件丢弃字节，丢弃条件有如下两种：
+     *
+     * 当 ByteBuf 已经不可读的时候，则无条件丢弃已读字节。
+     *
+     * 当已读的字节数超过整个 ByteBuf 一半容量时才会丢弃已读字节。否则无条件丢弃的话，收益就不高了。
+     */
     @Override
     public ByteBuf discardSomeReadBytes() {
         if (readerIndex > 0) {
+            // 当 ByteBuf 已经不可读了，则无条件丢弃已读
             if (readerIndex == writerIndex) {
                 ensureAccessible();
                 adjustMarkers(readerIndex);
@@ -277,6 +294,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
                 return this;
             }
 
+            // 当已读的字节数超过整个 ByteBuf 的一半容量时才会丢弃已读字节
             if (readerIndex >= capacity() >>> 1) {
                 setBytes(0, this, readerIndex, writerIndex - readerIndex);
                 writerIndex -= readerIndex;
@@ -1252,17 +1270,27 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return written;
     }
 
+    /**
+     * 对原生 ByteBuf 的深拷贝，copy 出来的 ByteBuf 是原生  ByteBuf 的一个副本，两者底层依赖的 Native Memory 是不同的，各自都有独立的  readerIndex，writerIndex，capacity，maxCapacity 。
+     */
     @Override
     public ByteBuf copy() {
+        // 从原生 ByteBuf 中的 readerIndex 开始，拷贝 readableBytes 个字节到新的 ByteBuf 中
         return copy(readerIndex, readableBytes());
     }
 
+    // 除了 slice() 之外，Netty 也提供了 duplicate() 方法来创建视图 ByteBuf
     @Override
     public ByteBuf duplicate() {
+        // 确保 ByteBuf 的引用计数不为 0
         ensureAccessible();
         return new UnpooledDuplicatedByteBuf(this);
     }
 
+    /**
+     * 用于创建 duplicate 视图 ByteBuf  的同时增加原生 ByteBuf 的引用计数。
+     * 视图 ByteBuf 与原生 ByteBuf 之间共用同一个引用计数。
+     */
     @Override
     public ByteBuf retainedDuplicate() {
         return duplicate().retain();
@@ -1273,13 +1301,25 @@ public abstract class AbstractByteBuf extends ByteBuf {
         return slice(readerIndex, readableBytes());
     }
 
+    /**
+     * 通过 slice() 方法创建出来的视图 ByteBuf 并不会改变原生 ByteBuf 的引用计数，
+     * 这会存在一个问题，就是由于视图 ByteBuf 和原生 ByteBuf 底层共用的是同一片内存区域，在原生 ByteBuf 或者视图 ByteBuf 各自的应用上下文中他们可能并不会意识到对方的存在。
+     *
+     * 如果对原生 ByteBuf 调用 release 方法，恰好引用计数就为 0 了，接着就会释放原生 ByteBuf 的 Native Memory 。
+     * 此时再对视图 ByteBuf 进行访问就有问题了，因为  Native Memory 已经被原生 ByteBuf 释放了。
+     * 同样的道理，对视图 ByteBuf 调用 release 方法 ，也会对原生 ByteBuf 产生影响。
+     *
+     * 为此 Netty 提供了一个 retainedSlice() 方法，在创建 slice 视图 ByteBuf 的同时对原生 ByteBuf 的引用计数加 1 ，两者共用同一个引用计数
+     */
     @Override
     public ByteBuf retainedSlice() {
+        // 原生 ByteBuf 的引用计数加 1
         return slice().retain();
     }
 
     @Override
     public ByteBuf slice(int index, int length) {
+        // 确保 ByteBuf 的引用计数不为 0
         ensureAccessible();
         return new UnpooledSlicedByteBuf(this, index, length);
     }

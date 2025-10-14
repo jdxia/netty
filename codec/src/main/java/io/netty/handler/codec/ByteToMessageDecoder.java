@@ -127,21 +127,29 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 return cumulation;
             }
             if (!cumulation.isReadable()) {
+                // 之前缓存的已经解码完毕，这里将它释放，并从 in 开始重新累加
                 cumulation.release();
                 return in;
             }
             CompositeByteBuf composite = null;
             try {
+                // cumulation 是一个 CompositeByteBuf，说明 cumulation 之前是一个被聚合过的 ByteBuf
                 if (cumulation instanceof CompositeByteBuf && cumulation.refCnt() == 1) {
                     composite = (CompositeByteBuf) cumulation;
                     // Writer index must equal capacity if we are going to "write"
                     // new components to the end
+                    // 这里需要保证 CompositeByteBuf 的 writerIndex 与 capacity 相等
+                    // 因为我们需要每次在 CompositeByteBuf 的末尾聚合添加新的 ByteBuf
                     if (composite.writerIndex() != composite.capacity()) {
                         composite.capacity(composite.writerIndex());
                     }
                 } else {
+                    // 如果 cumulation 不是 CompositeByteBuf，只是一个普通的 ByteBuf
+                    // 说明 cumulation 之前还没有被聚合过，这里是第一次聚合，所以需要先创建一个空的 CompositeByteBuf
+                    // 然后将 cumulation 添加到 CompositeByteBuf 中
                     composite = alloc.compositeBuffer(Integer.MAX_VALUE).addFlattenedComponents(true, cumulation);
                 }
+                // 将本次新接收到的 ByteBuf（in）添加累积到 CompositeByteBuf 中
                 composite.addFlattenedComponents(true, in);
                 in = null;
                 return composite;
@@ -162,9 +170,14 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     private static final byte STATE_CALLING_CHILD_DECODE = 1;
     private static final byte STATE_HANDLER_REMOVED_PENDING = 2;
 
+    // 缓存累加起来的 ByteBuf
     ByteBuf cumulation;
+
+    // ByteBuf 的累加聚合器
     private Cumulator cumulator = MERGE_CUMULATOR;
     private boolean singleDecode;
+
+    // 是否是第一次收包
     private boolean first;
 
     /**
@@ -282,11 +295,16 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof ByteBuf) {
             selfFiredChannelRead = true;
+            // 用于存储解码之后的对象
             CodecOutputList out = CodecOutputList.newInstance();
             try {
+                // 第一次收包
                 first = cumulation == null;
+
+                // 将新进来的 (ByteBuf) msg 与之前缓存的 cumulation 聚合累加起来
                 cumulation = cumulator.cumulate(ctx.alloc(),
                         first ? Unpooled.EMPTY_BUFFER : cumulation, (ByteBuf) msg);
+                // 解码
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
                 throw e;
@@ -315,6 +333,8 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
 
                     int size = out.size();
                     firedChannelRead |= out.insertSinceRecycled();
+
+                    // 解码成功之后，就将解码出来的对象沿着 pipeline 向后传播
                     fireChannelRead(ctx, out, size);
                 } finally {
                     out.recycle();

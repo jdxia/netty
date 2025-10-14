@@ -45,6 +45,12 @@ final class PlatformDependent0 {
     private static final long LONG_ARRAY_BASE_OFFSET;
     private static final long LONG_ARRAY_INDEX_SCALE;
     private static final Constructor<?> DIRECT_BUFFER_CONSTRUCTOR;
+
+    /**
+     * 是否明确禁用 Unsafe，null 表示开启  Unsafe
+     *
+     * Netty 提供了 -Dio.netty.noUnsafe 参数来让我们决定是否采用 Unsafe 的内存访问方式，默认值是 false , 表示 Netty 默认开启 Unsafe 访问方式
+     */
     private static final Throwable EXPLICIT_NO_UNSAFE_CAUSE = explicitNoUnsafeCause0();
     private static final Method ALLOCATE_ARRAY_METHOD;
     private static final Method ALIGN_SLICE;
@@ -52,6 +58,7 @@ final class PlatformDependent0 {
     private static final boolean IS_ANDROID = isAndroid0();
     private static final boolean STORE_FENCE_AVAILABLE;
 
+    // 验证 Unsafe 是否可用，null 表示 Unsafe 是可用状态
     private static final Throwable UNSAFE_UNAVAILABILITY_CAUSE;
     private static final Object INTERNAL_UNSAFE;
 
@@ -62,6 +69,7 @@ final class PlatformDependent0 {
 
     private static final boolean IS_EXPLICIT_TRY_REFLECTION_SET_ACCESSIBLE = explicitTryReflectionSetAccessible0();
 
+    // sun.misc.Unsafe
     static final Unsafe UNSAFE;
 
     // constants borrowed from murmur3
@@ -95,6 +103,7 @@ final class PlatformDependent0 {
         } else {
             direct = ByteBuffer.allocateDirect(1);
 
+            // 尝试通过反射的方式拿到 theUnsafe 实例
             // attempt to access field Unsafe#theUnsafe
             final Object maybeUnsafe = AccessController.doPrivileged(new PrivilegedAction<Object>() {
                 @Override
@@ -263,6 +272,8 @@ final class PlatformDependent0 {
                 }
             }
         }
+
+        // 为 null 表示 Unsafe 可用
         UNSAFE_UNAVAILABILITY_CAUSE = unsafeUnavailabilityCause;
         UNSAFE = unsafe;
 

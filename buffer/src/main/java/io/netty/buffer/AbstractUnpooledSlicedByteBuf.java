@@ -30,11 +30,17 @@ import java.nio.charset.Charset;
 import static io.netty.util.internal.MathUtil.isOutOfBounds;
 
 abstract class AbstractUnpooledSlicedByteBuf extends AbstractDerivedByteBuf {
+    // 原生 ByteBuf
     private final ByteBuf buffer;
+
+    // 视图 ByteBuf 相对于原生 ByteBuf的数据区域偏移
     private final int adjustment;
 
     AbstractUnpooledSlicedByteBuf(ByteBuf buffer, int index, int length) {
+        // 设置视图 ByteBuf 的 maxCapacity，readerIndex 为 0
         super(length);
+
+        // 原生 ByteBuf
         checkSliceOutOfBounds(index, length, buffer);
 
         if (buffer instanceof AbstractUnpooledSlicedByteBuf) {
@@ -49,6 +55,8 @@ abstract class AbstractUnpooledSlicedByteBuf extends AbstractDerivedByteBuf {
         }
 
         initLength(length);
+
+        // 设置视图 ByteBuf 的 writerIndex
         writerIndex(length);
     }
 
@@ -466,6 +474,7 @@ abstract class AbstractUnpooledSlicedByteBuf extends AbstractDerivedByteBuf {
      * Returns the index with the needed adjustment.
      */
     final int idx(int index) {
+        // 转换为原生 ByteBuf 的 readerIndex 或者 writerIndex
         return index + adjustment;
     }
 

@@ -36,6 +36,7 @@ import java.nio.channels.ScatteringByteChannel;
 @Deprecated
 public class DuplicatedByteBuf extends AbstractDerivedByteBuf {
 
+    // 原生 ByteBuf
     private final ByteBuf buffer;
 
     public DuplicatedByteBuf(ByteBuf buffer) {
@@ -43,8 +44,10 @@ public class DuplicatedByteBuf extends AbstractDerivedByteBuf {
     }
 
     DuplicatedByteBuf(ByteBuf buffer, int readerIndex, int writerIndex) {
+        // 初始化视图 ByteBuf 的 maxCapacity 与原生的相同
         super(buffer.maxCapacity());
 
+        // 原生 ByteBuf
         if (buffer instanceof DuplicatedByteBuf) {
             this.buffer = ((DuplicatedByteBuf) buffer).buffer;
         } else if (buffer instanceof AbstractPooledDerivedByteBuf) {
@@ -53,6 +56,7 @@ public class DuplicatedByteBuf extends AbstractDerivedByteBuf {
             this.buffer = buffer;
         }
 
+        // 视图 ByteBuf 的 readerIndex ， writerIndex 也与原生相同
         setIndex(readerIndex, writerIndex);
         markReaderIndex();
         markWriterIndex();
@@ -81,6 +85,7 @@ public class DuplicatedByteBuf extends AbstractDerivedByteBuf {
 
     @Override
     public int capacity() {
+        // 视图 ByteBuf 的 capacity 也与原生相同
         return unwrap().capacity();
     }
 

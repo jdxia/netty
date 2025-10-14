@@ -26,12 +26,15 @@ import java.nio.ByteBuffer;
  */
 public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
 
+    // 从该 ByteBufAllocator 分配出去的内存统计
     private final UnpooledByteBufAllocatorMetric metric = new UnpooledByteBufAllocatorMetric();
     private final boolean disableLeakDetector;
     private final boolean noCleaner;
 
     /**
      * Default instance which uses leak-detection for direct buffers.
+     *
+     * ByteBuf 分配器
      */
     public static final UnpooledByteBufAllocator DEFAULT =
             new UnpooledByteBufAllocator(PlatformDependent.directBufferPreferred());
@@ -93,6 +96,13 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
         } else {
             buf = new InstrumentedUnpooledDirectByteBuf(this, initialCapacity, maxCapacity);
         }
+
+        /**
+         * 是否启动内存泄露探测，如果启动则额外用 LeakAwareByteBuf 进行包装返回
+         *
+         * 如果我们开启了内存泄露探测，那么创建流程的最后，Netty 会用一个  LeakAwareByteBuf 去包装新创建出来的 ByteBuf，
+         * 当这个 ByteBuf 被 GC 的时候，Netty 会通过相关引用计数来判断是否存在忘记 release 的情况，从而确定出是否发生内存泄露
+         */
         return disableLeakDetector ? buf : toLeakAwareBuffer(buf);
     }
 
@@ -118,6 +128,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
         return metric;
     }
 
+    // 统计 Direct Memory 的占用
     void incrementDirect(int amount) {
         metric.directCounter.add(amount);
     }
@@ -126,6 +137,7 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
         metric.directCounter.add(-amount);
     }
 
+    // 统计 Heap Memory 的占用
     void incrementHeap(int amount) {
         metric.heapCounter.add(amount);
     }
@@ -178,9 +190,11 @@ public final class UnpooledByteBufAllocator extends AbstractByteBufAllocator imp
             extends UnpooledUnsafeNoCleanerDirectByteBuf {
         InstrumentedUnpooledUnsafeNoCleanerDirectByteBuf(
                 UnpooledByteBufAllocator alloc, int initialCapacity, int maxCapacity) {
+            // 构造普通的 UnpooledUnsafeNoCleanerDirectByteBuf
             super(alloc, initialCapacity, maxCapacity);
         }
 
+        // 分配，释放 的时候更新 Direct Memory
         @Override
         protected ByteBuffer allocateDirect(int initialCapacity) {
             ByteBuffer buffer = super.allocateDirect(initialCapacity);
