@@ -924,8 +924,19 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         // Ensure we always run tasks.
                         final long ioTime = System.nanoTime() - ioStartTime;
 
-                        // 限定在超时时间内 处理有限的异步任务 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
-                        // 每运行64个异步任务 检查一下 是否达到 执行deadline
+                        /**
+                         * 限定在超时时间内 处理有限的异步任务 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
+                         * 每运行64个异步任务 检查一下 是否达到 执行deadline
+                         *
+                         * 计算
+                         * ioRatio = 70（IO 优先 也就是 处理io事件优先）
+                         * 假设处理 SelectionKey 花了 100ms
+                         * final long ioTime = 100; // ms
+                         * 计算异步任务可以用多少时间
+                         * long taskTimeout = ioTime * (100 - 70) / 70
+                         *                    = 100 * 30 / 70
+                         *                    = 42.86ms  // ⚠️ 比 IO 时间少很多
+                         */
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else { //没有IO就绪事件处理，则只执行异步任务 最多执行64个 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞

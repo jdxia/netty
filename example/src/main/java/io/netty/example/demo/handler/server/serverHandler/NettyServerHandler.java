@@ -9,6 +9,7 @@ import io.netty.util.ReferenceCountUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 // 这个类很像 reactor 模式里的processor线程，负责读区请求然后返回响应
@@ -81,7 +82,6 @@ public class NettyServerHandler extends ChannelInboundHandlerAdapter {
          * {@link AbstractChannelHandlerContext#write(Object)}
          */
         ctx.write(responseBuffer);
-
 
 
         // 第三步, 自定义异步任务, 提交到 taskQueue
