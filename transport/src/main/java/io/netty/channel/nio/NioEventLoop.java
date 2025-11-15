@@ -135,6 +135,12 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     //    AWAKE            when EL is awake
     //    NONE             when EL is waiting with no wakeup scheduled
     //    other value T    when EL is waiting with wakeup scheduled at time T
+    /**
+     * nextWakeupNanos 是 NioEventLoop 中用于跟踪 Reactor 线程唤醒状态和唤醒时间的核心变量。它的设计非常精妙，用一个 AtomicLong 同时表达了三种语义：
+     *   1. AWAKE (-1L)：Reactor 线程当前处于苏醒状态，正在处理任务
+     *   2. NONE (Long.MAX_VALUE)：Reactor 线程阻塞在 Selector 上，没有定时任务需要执行
+     *   3. 具体时间戳 (其他值)：Reactor 线程阻塞在 Selector 上，计划在该时间点唤醒执行定时任务
+     */
     private final AtomicLong nextWakeupNanos = new AtomicLong(AWAKE);
 
     //Selector轮询策略 决定什么时候轮询，什么时候处理IO事件，什么时候执行异步任务
@@ -919,6 +925,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                         final long ioTime = System.nanoTime() - ioStartTime;
 
                         // 限定在超时时间内 处理有限的异步任务 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
+                        // 每运行64个异步任务 检查一下 是否达到 执行deadline
                         ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
                     }
                 } else { //没有IO就绪事件处理，则只执行异步任务 最多执行64个 防止Reactor线程处理异步任务时间过长而导致 I/O 事件阻塞
