@@ -34,6 +34,12 @@ import io.netty.channel.ChannelHandlerMask.Skip;
 public class ChannelInboundHandlerAdapter extends ChannelHandlerAdapter implements ChannelInboundHandler {
 
     /**
+     * 事件之后不会释放消息 channelRead (ChannelHandlerContext对象) 方法自动返回。
+     * 如果你在找一个 ChannelInboundHandler 自动释放接收到的消息的实现，请参阅 SimpleChannelInboundHandler.
+     */
+
+
+    /**
      * Calls {@link ChannelHandlerContext#fireChannelRegistered()} to forward
      * to the next {@link ChannelInboundHandler} in the {@link ChannelPipeline}.
      *

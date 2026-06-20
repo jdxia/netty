@@ -57,7 +57,7 @@ public class NettyServer {
          *
          * netty 里面有 nioEventLoop (thread, selector, taskQueue, tailQueue) 他是一个线程, 里面会注册 很多 nioSocketChannel (看是那个group)
          *
-         * netty将NettyNioServerSocketChannel中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上,
+         * netty将 NettyNioServerSocketChannel 中包装的JDK NIO ServerSocketChannel注册到Reactor中的JDK NIO Selector上,
          * 并且将Netty自定义的NioServerSocketChannel 附着在SelectionKey的att属性上，完成Netty自定义Channel与JDK NIO Channel的关系绑定。
          *
          * netty里面一个 channel有自己的pipeline
@@ -69,6 +69,10 @@ public class NettyServer {
          * [HandlerC] <-> [HandlerContextC]
          *
          * pipeline其实是一个ChannelHandlerContext类型的双向链表。头结点HeadContext,尾结点TailContext, ChannelHandlerContext中包装着ChannelHandler
+         * 虽然开发者在应用层操作的是 ChannelHandler，但在 Pipeline 内部，真正的链表节点并非 Handler 本身，而是包装了 Handler 的上下文对象 AbstractChannelHandlerContext
+         *
+         * 入站事件和出站事件在一个双向链表中，入站事件会从链表head 往后传递到最后一个人站的 handler.
+         * 出站事件会从链表 tail 往前传递到最前一个出站的 handler，两种类型的 handler 互不干扰
          *
          * 注意:
          * channel.write(...) 从 Tail 开始走整个出站链，经过所有出站处理器

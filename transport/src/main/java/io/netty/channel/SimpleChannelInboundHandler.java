@@ -93,16 +93,21 @@ public abstract class SimpleChannelInboundHandler<I> extends ChannelInboundHandl
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         boolean release = true;
         try {
+            // 根据泛型决定要不要接受这个类型
             if (acceptInboundMessage(msg)) {
                 @SuppressWarnings("unchecked")
                 I imsg = (I) msg;
+                // 如果接受这个类型, 就调用 channelRead0
                 channelRead0(ctx, imsg);
             } else {
+                // 否则传给下一个handler
                 release = false;
                 ctx.fireChannelRead(msg);
             }
         } finally {
+            // 这是true
             if (autoRelease && release) {
+                // 释放 msg
                 ReferenceCountUtil.release(msg);
             }
         }
